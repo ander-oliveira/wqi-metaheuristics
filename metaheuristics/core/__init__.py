@@ -24,10 +24,22 @@ from .evaluation import (
 from .io import load_seeds
 from .types import MetaheuristicContext, ObjectiveStateND
 
+try:
+    from .ils_engine import (
+        ILSRuntimeConfig,
+        run_ils_experiment,
+        run_ils_multi_seed_experiment,
+    )
+except Exception:  # pragma: no cover - compatibility path
+    ILSRuntimeConfig = None
+    run_ils_experiment = None
+    run_ils_multi_seed_experiment = None
+
 __all__ = [
     'CORE_INDICATOR_COLUMNS',
     'HEX_TIME_MATRIX_REQUIRED_COLUMNS',
     'ID_COLUMNS',
+    'ILSRuntimeConfig',
     'ObjectiveStateND',
     'POI_DIMENSION_COLUMNS',
     'MetaheuristicContext',
@@ -44,6 +56,8 @@ __all__ = [
     'objective_function',
     'objective_function_with_time_nd',
     'recalculate_iqc_and_critic',
+    'run_ils_experiment',
+    'run_ils_multi_seed_experiment',
     'random_budget_allocation',
     'random_spatial_budget_allocation',
     'validate_hex_time_matrix',

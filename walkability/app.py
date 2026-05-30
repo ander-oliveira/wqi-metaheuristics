@@ -86,14 +86,12 @@ def _find_existing_walkability_datasets(location: str,
     return available
 
 
-def _ask_existing_profile_for_mode2(location: str,
-                                    key_location: str,
-                                    profiles_to_run: list,
-                                    h3_resolution: int,
-                                    distance: int) -> Optional[str]:
+def _get_available_profile_keys_for_mode2(location: str,
+                                          key_location: str,
+                                          profiles_to_run: list,
+                                          h3_resolution: int,
+                                          distance: int) -> list:
     profile_keys = [key for key, _ in profiles_to_run]
-    profile_name_map = {key: cfg.get('name', key) for key, cfg in profiles_to_run}
-
     available = _find_existing_walkability_datasets(
         location=location,
         key_location=key_location,
@@ -102,34 +100,65 @@ def _ask_existing_profile_for_mode2(location: str,
         distance=distance,
     )
     if not available:
-        print("\nNo existing walkability datasets were found for this location.")
-        return None
+        return []
 
     available_profile_keys = []
     for profile_key in profile_keys:
-        has_profile_dataset = any(item['profile_key'] == profile_key for item in available)
-        if has_profile_dataset:
+        if any(item['profile_key'] == profile_key for item in available):
             available_profile_keys.append(profile_key)
+    return available_profile_keys
 
+
+def _ask_profile_execution_scope_for_mode2(location: str,
+                                           key_location: str,
+                                           profiles_to_run: list,
+                                           h3_resolution: int,
+                                           distance: int) -> list:
+    available_profile_keys = _get_available_profile_keys_for_mode2(
+        location=location,
+        key_location=key_location,
+        profiles_to_run=profiles_to_run,
+        h3_resolution=h3_resolution,
+        distance=distance,
+    )
     if not available_profile_keys:
         print("\nNo walkability profile datasets are available for this location.")
-        return None
+        return []
+
+    profile_name_map = {key: cfg.get('name', key) for key, cfg in profiles_to_run}
+    print("\nSelect profile execution scope:")
+    print("1 - Run one profile")
+    print("2 - Run all available profiles sequentially")
+
+    while True:
+        scope_choice = input("Enter option [1-2] or press Enter to exit: ").strip()
+        if scope_choice == '':
+            print("Profile scope selection canceled.")
+            return []
+        if scope_choice in {'1', '2'}:
+            break
+        print("Invalid option. Choose 1, 2, or press Enter to exit.")
+
+    if scope_choice == '2':
+        print("\nProfiles selected for sequential execution:")
+        for profile_key in available_profile_keys:
+            print(f"- {profile_key} ({profile_name_map.get(profile_key, profile_key)})")
+        return available_profile_keys
 
     print("\nSelect walking profile for metaheuristic:")
     for idx, profile_key in enumerate(available_profile_keys, start=1):
-        dataset_count = sum(1 for item in available if item['profile_key'] == profile_key)
         profile_name = profile_name_map.get(profile_key, profile_key)
-        print(f"{idx} - {profile_key} ({profile_name}) | datasets={dataset_count}")
+        print(f"{idx} - {profile_key} ({profile_name})")
 
     while True:
         choice = input("Enter profile option number or press Enter to exit: ").strip()
         if choice == '':
             print("Profile selection canceled.")
-            return None
+            return []
         if choice.isdigit():
             selected_idx = int(choice)
             if 1 <= selected_idx <= len(available_profile_keys):
-                return available_profile_keys[selected_idx - 1]
+                return [available_profile_keys[selected_idx - 1]]
         print(f"Please enter a number between 1 and {len(available_profile_keys)}, or press Enter to exit.")
 
 
@@ -137,7 +166,8 @@ def _use_existing_dataset_mode(location: str,
                                key_location: str,
                                selected_profile_key: str,
                                h3_resolution: int,
-                               distance: int) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[str]]:
+                               distance: int,
+                               auto_select_single_dataset: bool = False) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[str]]:
     available = _find_existing_walkability_datasets(
         location=location,
         key_location=key_location,
@@ -149,6 +179,21 @@ def _use_existing_dataset_mode(location: str,
     if not available:
         print(f"\nNo existing walkability datasets were found for profile: {selected_profile_key}.")
         return None, None, None
+
+    if auto_select_single_dataset and len(available) == 1:
+        selected = available[0]
+        if not selected['has_hex_time_matrix']:
+            print("\nSelected dataset has no hex-time matrix file.")
+            print("Please run execution mode 1 again to generate both required inputs.")
+            return None, None, None
+
+        df_selected = pd.read_csv(selected['file_path'])
+        df_hex_time_matrix = pd.read_csv(selected['hex_time_matrix_path'])
+        print(f"\nAutomatically loaded single available dataset for profile: {selected['profile_key']}")
+        print(f"Rows: {len(df_selected)} | Columns: {len(df_selected.columns)}")
+        print(f"Columns: {', '.join(df_selected.columns)}")
+        print(f"Hex-time matrix rows: {len(df_hex_time_matrix)}")
+        return df_selected, df_hex_time_matrix, selected['profile_key']
 
     print("\nExisting walkability datasets:")
     for idx, item in enumerate(available, start=1):
@@ -209,16 +254,18 @@ def _select_profile_for_meta(df_walkability_by_profile: dict) -> Tuple[str, pd.D
 def _run_metaheuristic_stage(df_walkability: pd.DataFrame,
                              df_hex_time_matrix: pd.DataFrame,
                              walking_profile: str,
-                             budget: int) -> Optional[dict]:
+                             budget: int,
+                             selected_method: Optional[str] = None,
+                             seeds: Optional[list] = None) -> Optional[dict]:
     try:
-        method = ask_metaheuristic_method()
-        seeds = load_seeds('seeds.txt')
+        method = selected_method if selected_method is not None else ask_metaheuristic_method()
+        seed_list = seeds if seeds is not None else load_seeds('seeds.txt')
         return walk_meta_opt(
             df_walkability=df_walkability,
             df_hex_time_matrix=df_hex_time_matrix,
             budget=budget,
             method=method,
-            seeds=seeds,
+            seeds=seed_list,
             walking_profile=walking_profile,
         )
     except Exception as e:
@@ -301,29 +348,47 @@ def run_cli() -> None:
             if len(selected_locations) > 1:
                 print(f"\n=== Location [{location_idx}/{len(selected_locations)}]: {location} ===")
 
-            selected_profile_key = _ask_existing_profile_for_mode2(
+            selected_profile_keys = _ask_profile_execution_scope_for_mode2(
                 location=location,
                 key_location=key_location,
                 profiles_to_run=profiles_to_run,
                 h3_resolution=H3_RESOLUTION,
                 distance=DISTANCE,
             )
-            if selected_profile_key is None:
-                print(f"Skipping location without selected profile: {location}")
+            if not selected_profile_keys:
+                print(f"Skipping location without selected profile scope: {location}")
                 continue
 
-            existing_df, existing_hex_time_matrix, existing_profile = _use_existing_dataset_mode(
-                location=location,
-                key_location=key_location,
-                selected_profile_key=selected_profile_key,
-                h3_resolution=H3_RESOLUTION,
-                distance=DISTANCE,
-            )
-            if existing_df is None or existing_hex_time_matrix is None or existing_profile is None:
-                print(f"Skipping location without selected dataset: {location}")
-                continue
+            method_for_location = ask_metaheuristic_method()
+            seeds_for_location = load_seeds('seeds.txt')
 
-            _run_metaheuristic_stage(existing_df, existing_hex_time_matrix, existing_profile, BUDGET)
+            for profile_idx, selected_profile_key in enumerate(selected_profile_keys, start=1):
+                if len(selected_profile_keys) > 1:
+                    print(
+                        f"\n--- Profile [{profile_idx}/{len(selected_profile_keys)}] "
+                        f"for {location}: {selected_profile_key} ---"
+                    )
+
+                existing_df, existing_hex_time_matrix, existing_profile = _use_existing_dataset_mode(
+                    location=location,
+                    key_location=key_location,
+                    selected_profile_key=selected_profile_key,
+                    h3_resolution=H3_RESOLUTION,
+                    distance=DISTANCE,
+                    auto_select_single_dataset=True,
+                )
+                if existing_df is None or existing_hex_time_matrix is None or existing_profile is None:
+                    print(f"Skipping profile without selected dataset: {selected_profile_key}")
+                    continue
+
+                _run_metaheuristic_stage(
+                    existing_df,
+                    existing_hex_time_matrix,
+                    existing_profile,
+                    BUDGET,
+                    selected_method=method_for_location,
+                    seeds=seeds_for_location,
+                )
 
         print('Done.')
         return

@@ -141,3 +141,50 @@ def walk_meta_opt(df_walkability: pd.DataFrame,
         'allocations': allocations,
         'method_result': method_result,
     }
+
+
+def walk_meta_opt_multi_profile(profile_datasets: Dict[str, Dict[str, pd.DataFrame]],
+                                budget: int,
+                                method: str,
+                                seeds: List[int]) -> Dict[str, object]:
+    """
+    Backward-compatible helper to run `walk_meta_opt` for multiple walking profiles.
+
+    Expected `profile_datasets` shape:
+    {
+        "average_adult": {
+            "df_walkability": <pd.DataFrame>,
+            "df_hex_time_matrix": <pd.DataFrame>,
+        },
+        ...
+    }
+    """
+    if not profile_datasets:
+        raise ValueError("profile_datasets is empty.")
+
+    profile_results = {}
+    for profile_key, profile_payload in profile_datasets.items():
+        if not isinstance(profile_payload, dict):
+            raise ValueError(
+                f"Invalid payload for profile '{profile_key}'. Expected a dict with "
+                "'df_walkability' and 'df_hex_time_matrix'."
+            )
+
+        df_walkability = profile_payload.get('df_walkability')
+        df_hex_time_matrix = profile_payload.get('df_hex_time_matrix')
+        profile_results[profile_key] = walk_meta_opt(
+            df_walkability=df_walkability,
+            df_hex_time_matrix=df_hex_time_matrix,
+            budget=budget,
+            method=method,
+            seeds=seeds,
+            walking_profile=profile_key,
+        )
+
+    return {
+        'method_code': method,
+        'method_name': METAHEURISTIC_METHODS.get(method, 'Unknown method'),
+        'budget': int(budget),
+        'seeds': [int(seed) for seed in seeds],
+        'profile_results': profile_results,
+    }
