@@ -34,6 +34,10 @@ class ILSRuntimeConfig:
     experiment_mode: bool = True
     debug_mode: bool = False
     save_best_matrix_npz: bool = False
+    log_enabled: bool = True
+    log_every_iterations: int = 10
+    log_only_improvements: bool = False
+    log_on_acceptance: bool = False
 
 
 def _slugify(value: str) -> str:
@@ -407,6 +411,14 @@ def _run_single_seed_ils(seed_value: int,
     no_improve_streak = 0
 
     perturb_min, perturb_current, perturb_max = _resolve_perturbation_strength_bounds(context.budget, config)
+    progress_log_every = max(1, int(config.log_every_iterations))
+    if config.log_enabled:
+        print(
+            f"[ILS][seed={seed_value}] start "
+            f"initial={initial_objective_value:.4f} best={best_objective_value:.4f} "
+            f"perturbation={perturb_current} "
+            f"bounds=[{perturb_min},{perturb_max}]"
+        )
 
     baseline_value = context.baseline_iqc_total
     baseline_for_delta = float(baseline_value) if baseline_value is not None else None
@@ -501,6 +513,28 @@ def _run_single_seed_ils(seed_value: int,
             "applied_perturbation_moves": int(applied_perturbation_moves),
         })
 
+        should_log_progress = False
+        if config.log_enabled:
+            if config.log_only_improvements:
+                should_log_progress = improved
+            else:
+                should_log_progress = (
+                    improved
+                    or iterations == 1
+                    or (iterations % progress_log_every == 0)
+                    or (config.log_on_acceptance and accepted)
+                )
+
+        if should_log_progress:
+            print(
+                f"[ILS][seed={seed_value}] iter={iterations} eval={evaluations} "
+                f"candidate={candidate_objective_value:.4f} current={current_objective_value:.4f} "
+                f"best={best_objective_value:.4f} perturbation={perturb_current} "
+                f"pert_moves={applied_perturbation_moves} accepted={accepted} "
+                f"improved={improved} no_improve={no_improve_streak} "
+                f"ls_acc={int(local_search_result['accepted_local_moves'])}"
+            )
+
     runtime_seconds = float(perf_counter() - start_time)
     stopping_reason = _determine_stopping_reason(
         evaluations=evaluations,
@@ -508,6 +542,13 @@ def _run_single_seed_ils(seed_value: int,
         no_improve_streak=no_improve_streak,
         config=config,
     )
+    if config.log_enabled:
+        print(
+            f"[ILS][seed={seed_value}] done "
+            f"best={best_objective_value:.4f} eval={evaluations} iter={iterations} "
+            f"accepted={accepted_iterations} improved={improvement_iterations} "
+            f"stop={stopping_reason}"
+        )
 
     delta_abs_vs_baseline = None
     delta_pct_vs_baseline = None
@@ -561,6 +602,10 @@ def run_ils(context: MetaheuristicContext) -> dict:
         experiment_mode=os.getenv("ILS_EXPERIMENT_MODE", "1") != "0",
         debug_mode=os.getenv("ILS_DEBUG_MODE", "0") == "1",
         save_best_matrix_npz=os.getenv("ILS_SAVE_BEST_MATRIX_NPZ", "0") == "1",
+        log_enabled=os.getenv("ILS_LOG_ENABLED", "1") == "1",
+        log_every_iterations=max(1, int(os.getenv("ILS_LOG_EVERY", "10"))),
+        log_only_improvements=os.getenv("ILS_LOG_ONLY_IMPROVEMENTS", "0") == "1",
+        log_on_acceptance=os.getenv("ILS_LOG_ON_ACCEPTANCE", "0") == "1",
     )
     objective_state = context.objective_state_nd
 
