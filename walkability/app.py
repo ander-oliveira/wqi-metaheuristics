@@ -86,12 +86,14 @@ def _find_existing_walkability_datasets(location: str,
     return available
 
 
-def _use_existing_dataset_mode(location: str,
-                               key_location: str,
-                               profiles_to_run: list,
-                               h3_resolution: int,
-                               distance: int) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[str]]:
+def _ask_existing_profile_for_mode2(location: str,
+                                    key_location: str,
+                                    profiles_to_run: list,
+                                    h3_resolution: int,
+                                    distance: int) -> Optional[str]:
     profile_keys = [key for key, _ in profiles_to_run]
+    profile_name_map = {key: cfg.get('name', key) for key, cfg in profiles_to_run}
+
     available = _find_existing_walkability_datasets(
         location=location,
         key_location=key_location,
@@ -99,10 +101,54 @@ def _use_existing_dataset_mode(location: str,
         h3_resolution=h3_resolution,
         distance=distance,
     )
-
     if not available:
         print("\nNo existing walkability datasets were found for this location.")
-        return None, None
+        return None
+
+    available_profile_keys = []
+    for profile_key in profile_keys:
+        has_profile_dataset = any(item['profile_key'] == profile_key for item in available)
+        if has_profile_dataset:
+            available_profile_keys.append(profile_key)
+
+    if not available_profile_keys:
+        print("\nNo walkability profile datasets are available for this location.")
+        return None
+
+    print("\nSelect walking profile for metaheuristic:")
+    for idx, profile_key in enumerate(available_profile_keys, start=1):
+        dataset_count = sum(1 for item in available if item['profile_key'] == profile_key)
+        profile_name = profile_name_map.get(profile_key, profile_key)
+        print(f"{idx} - {profile_key} ({profile_name}) | datasets={dataset_count}")
+
+    while True:
+        choice = input("Enter profile option number or press Enter to exit: ").strip()
+        if choice == '':
+            print("Profile selection canceled.")
+            return None
+        if choice.isdigit():
+            selected_idx = int(choice)
+            if 1 <= selected_idx <= len(available_profile_keys):
+                return available_profile_keys[selected_idx - 1]
+        print(f"Please enter a number between 1 and {len(available_profile_keys)}, or press Enter to exit.")
+
+
+def _use_existing_dataset_mode(location: str,
+                               key_location: str,
+                               selected_profile_key: str,
+                               h3_resolution: int,
+                               distance: int) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[str]]:
+    available = _find_existing_walkability_datasets(
+        location=location,
+        key_location=key_location,
+        profile_keys=[selected_profile_key],
+        h3_resolution=h3_resolution,
+        distance=distance,
+    )
+
+    if not available:
+        print(f"\nNo existing walkability datasets were found for profile: {selected_profile_key}.")
+        return None, None, None
 
     print("\nExisting walkability datasets:")
     for idx, item in enumerate(available, start=1):
@@ -255,10 +301,21 @@ def run_cli() -> None:
             if len(selected_locations) > 1:
                 print(f"\n=== Location [{location_idx}/{len(selected_locations)}]: {location} ===")
 
-            existing_df, existing_hex_time_matrix, existing_profile = _use_existing_dataset_mode(
+            selected_profile_key = _ask_existing_profile_for_mode2(
                 location=location,
                 key_location=key_location,
                 profiles_to_run=profiles_to_run,
+                h3_resolution=H3_RESOLUTION,
+                distance=DISTANCE,
+            )
+            if selected_profile_key is None:
+                print(f"Skipping location without selected profile: {location}")
+                continue
+
+            existing_df, existing_hex_time_matrix, existing_profile = _use_existing_dataset_mode(
+                location=location,
+                key_location=key_location,
+                selected_profile_key=selected_profile_key,
                 h3_resolution=H3_RESOLUTION,
                 distance=DISTANCE,
             )
