@@ -133,11 +133,13 @@ pco212-metaheuristics/
 
 -  `recalculate_iqc_and_critic(df_final)`
 
--  `objective_function(...)` (official objective entry point: dataframe mode and ndarray mode)
+-  `objective_function(final_indicator_matrix=...)` (official objective entry point: CRITIC + IQC + sum(IQC))
+
+-  `build_final_indicator_matrix_nd(candidate_matrix, objective_state)` (builds baseline+proposal matrix with source-target `alpha_20` impact)
 
 -  `build_objective_state_nd(df_walkability, df_hex_time_matrix, candidate_dimensions)` (one-time precompilation to ndarray state)
 
--  `evaluate_candidate_matrix_nd(candidate_matrix, objective_state)` (compatibility wrapper for ndarray objective calls)
+-  `evaluate_candidate_matrix_nd(candidate_matrix, objective_state)` (compatibility wrapper: candidate -> final matrix -> objective)
 
 -  `metaheuristics/core/types.py`: shared dataclass context for method implementations.
 
@@ -249,7 +251,7 @@ Practical result:
 
 - Implemented as `sum_iqc` (sum of IQC across all hexagons).
 
-- Fast path: use `objective_function(candidate_matrix=..., objective_state=...)` with a precompiled `objective_state_nd`.
+- Fast path: use `build_final_indicator_matrix_nd(...)` + `objective_function(final_indicator_matrix=...)` with a precompiled `objective_state_nd`.
 
 
   
@@ -314,7 +316,7 @@ What `objective_state_nd` is:
 - It is the one-time compiled representation of optimization inputs for fast objective evaluation.
 - It stores: sequential hex indexing (`h3_id -> idx`), `baseline_matrix`, dimension indexing, and source-target impact arrays (`source_idx`, `target_idx`, `alpha`).
 - It is built once by `build_objective_state_nd(...)` before the metaheuristic loop.
-- The objective function hot loop then receives only `candidate_matrix` + `objective_state_nd`, avoiding dataframe `merge/groupby/pivot` overhead.
+- The method hot loop builds `final_indicator_matrix` from `candidate_matrix` + `objective_state_nd` and then evaluates it with `objective_function(...)`, avoiding dataframe `merge/groupby/pivot` overhead.
 
 Plain-language note (no OOP background required):
 
@@ -336,7 +338,11 @@ All methods must evaluate candidate solutions with:
 
 ```python
 
-from metaheuristics.core import allocation_items_to_candidate_matrix, objective_function
+from metaheuristics.core import (
+    allocation_items_to_candidate_matrix,
+    build_final_indicator_matrix_nd,
+    objective_function,
+)
 
   
 
@@ -345,20 +351,22 @@ candidate_matrix = allocation_items_to_candidate_matrix(
     objective_state=context.objective_state_nd,
 )
 
-result = objective_function(
+final_indicator_matrix = build_final_indicator_matrix_nd(
     candidate_matrix=candidate_matrix,
     objective_state=context.objective_state_nd,
+)
+
+result = objective_function(
+    final_indicator_matrix=final_indicator_matrix,
 )
 
 ```
 
   
 
-`objective_function(candidate_matrix=..., objective_state=...)`:
+`objective_function(final_indicator_matrix=...)`:
 
-- expects only an ndarray candidate matrix in the hot loop,
-
-- applies source-target spatial-time impact using precompiled `alpha_20` arrays,
+- expects a ready final indicator matrix,
 
 - recalculates CRITIC weights,
 
@@ -438,7 +446,11 @@ Without registration, the optimizer cannot dispatch to the method.
 
 from ..core.types import MetaheuristicContext
 
-from ..core import allocation_items_to_candidate_matrix, objective_function
+from ..core import (
+    allocation_items_to_candidate_matrix,
+    build_final_indicator_matrix_nd,
+    objective_function,
+)
 
   
 
@@ -451,9 +463,13 @@ candidate_matrix = allocation_items_to_candidate_matrix(
     objective_state=context.objective_state_nd,
 )
 
-eval_result = objective_function(
+final_indicator_matrix = build_final_indicator_matrix_nd(
     candidate_matrix=candidate_matrix,
     objective_state=context.objective_state_nd,
+)
+
+eval_result = objective_function(
+    final_indicator_matrix=final_indicator_matrix,
 )
 
 return {

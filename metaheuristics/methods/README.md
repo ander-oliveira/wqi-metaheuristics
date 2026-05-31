@@ -32,7 +32,7 @@ The `context` object includes:
 What `objective_state_nd` is:
 - One-time compiled state created before the optimization loop.
 - Contains sequential hex indexing, `baseline_matrix`, dimension mapping, and precompiled source-target `alpha` impacts.
-- Lets `objective_function(candidate_matrix=..., objective_state=...)` run with ndarray operations only in the hot loop.
+- Lets us build `final_indicator_matrix` from proposal + baseline using ndarray operations.
 
 Plain-language note:
 - `MetaheuristicContext` is only a container with prepared inputs.
@@ -40,25 +40,32 @@ Plain-language note:
 - `context.allocations[0]` is simply the first candidate allocation generated from seeds.
 
 ## Objective function (shared, ndarray entry point)
-The low-overhead objective is:
+The low-overhead flow is:
 
 ```python
-from ..core import allocation_items_to_candidate_matrix, objective_function
+from ..core import (
+    allocation_items_to_candidate_matrix,
+    build_final_indicator_matrix_nd,
+    objective_function,
+)
 
 candidate_matrix = allocation_items_to_candidate_matrix(
     allocation_items=candidate_allocation,
     objective_state=context.objective_state_nd,
 )
-eval_result = objective_function(
+final_indicator_matrix = build_final_indicator_matrix_nd(
     candidate_matrix=candidate_matrix,
     objective_state=context.objective_state_nd,
+)
+eval_result = objective_function(
+    final_indicator_matrix=final_indicator_matrix,
 )
 score = eval_result["objective_value"]  # maximize
 ```
 
-This objective:
-- uses the source-target time-decay impact (`alpha_20`) precompiled outside the hot loop,
-- updates indicators using ndarray operations only,
+Separation of responsibilities:
+- `build_final_indicator_matrix_nd(...)` applies source-target time-decay (`alpha_20`) and produces baseline+proposal matrix.
+- `objective_function(...)` only evaluates the final matrix,
 - recalculates CRITIC + IQC,
 - returns `objective_value = sum(IQC)` and `optimization_direction = "maximize"`.
 
@@ -77,7 +84,11 @@ Returned fields in method result:
 ## Minimal method skeleton
 ```python
 from ..core.types import MetaheuristicContext
-from ..core import allocation_items_to_candidate_matrix, objective_function
+from ..core import (
+    allocation_items_to_candidate_matrix,
+    build_final_indicator_matrix_nd,
+    objective_function,
+)
 
 def run_ils(context: MetaheuristicContext) -> dict:
     first_candidate = context.allocations[0]
@@ -85,9 +96,12 @@ def run_ils(context: MetaheuristicContext) -> dict:
         allocation_items=first_candidate["allocation"],
         objective_state=context.objective_state_nd,
     )
-    eval_result = objective_function(
+    final_indicator_matrix = build_final_indicator_matrix_nd(
         candidate_matrix=candidate_matrix,
         objective_state=context.objective_state_nd,
+    )
+    eval_result = objective_function(
+        final_indicator_matrix=final_indicator_matrix,
     )
     return {
         "method_code": context.method_code,
@@ -107,6 +121,6 @@ Without registration, the optimizer cannot dispatch to the method.
 
 ## Quick checklist
 - Function compiles.
-- Function uses `objective_function(candidate_matrix=..., objective_state=...)`.
+- Function builds final matrix first, then calls `objective_function(final_indicator_matrix=...)`.
 - Method is registered in `METHOD_RUNNERS`.
 - Return dict has clear `status` and objective value.

@@ -12,6 +12,7 @@ import pandas as pd
 
 from ..core import (
     allocation_items_to_candidate_matrix,
+    build_final_indicator_matrix_nd,
     objective_function,
 )
 from ..core.types import MetaheuristicContext, ObjectiveStateND
@@ -146,9 +147,12 @@ def _apply_relocation_move(candidate_matrix: np.ndarray,
 
 def _evaluate_candidate_matrix(candidate_matrix: np.ndarray,
                                objective_state: ObjectiveStateND) -> Dict[str, object]:
-    return objective_function(
+    final_indicator_matrix = build_final_indicator_matrix_nd(
         candidate_matrix=candidate_matrix,
         objective_state=objective_state,
+    )
+    return objective_function(
+        final_indicator_matrix=final_indicator_matrix,
     )
 
 

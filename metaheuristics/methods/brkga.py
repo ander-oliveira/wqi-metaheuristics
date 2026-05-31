@@ -1,5 +1,8 @@
+import numpy as np
+
 from ..core import (
     allocation_items_to_candidate_matrix,
+    build_final_indicator_matrix_nd,
     objective_function,
 )
 from ..core.types import MetaheuristicContext
@@ -26,9 +29,12 @@ def run_brkga(context: MetaheuristicContext) -> dict:
         seed=first_candidate['seed'],
         candidate_matrix=candidate_matrix,
     )
-    eval_result = objective_function(
+    final_indicator_matrix = build_final_indicator_matrix_nd(
         candidate_matrix=candidate_matrix,
         objective_state=context.objective_state_nd,
+    )
+    eval_result = objective_function(
+        final_indicator_matrix=final_indicator_matrix,
     )
 
     return {
@@ -37,7 +43,7 @@ def run_brkga(context: MetaheuristicContext) -> dict:
         'status': 'baseline_ready',
         'seed_used': first_candidate['seed'],
         'best_objective_value': eval_result['objective_value'],
-        'applied_allocation_size': eval_result['applied_allocation_size'],
+        'applied_allocation_size': int(np.count_nonzero(candidate_matrix)),
         **debug_files,
         'message': 'BRKGA placeholder currently evaluates the first spatial candidate using shared objective.',
     }

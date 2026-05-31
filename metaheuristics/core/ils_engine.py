@@ -13,7 +13,6 @@ from .evaluation import (
     build_objective_state_nd,
     evaluate_candidate_matrix_nd,
     objective_function,
-    objective_function_with_time_nd,
 )
 from .types import MetaheuristicContext, ObjectiveStateND
 
@@ -45,6 +44,21 @@ def run_ils_experiment(context: MetaheuristicContext):
 def run_ils_multi_seed_experiment(context: MetaheuristicContext):
     """Alias kept for compatibility with previous naming."""
     return run_ils_experiment(context)
+
+
+def objective_function_with_time_nd(allocation_items, objective_state):
+    """
+    Backward-compatible helper:
+    allocation list -> candidate ndarray -> ndarray compatibility evaluator.
+    """
+    candidate_matrix = allocation_items_to_candidate_matrix(
+        allocation_items=allocation_items,
+        objective_state=objective_state,
+    )
+    return evaluate_candidate_matrix_nd(
+        candidate_matrix=candidate_matrix,
+        objective_state=objective_state,
+    )
 
 
 __all__ = [
