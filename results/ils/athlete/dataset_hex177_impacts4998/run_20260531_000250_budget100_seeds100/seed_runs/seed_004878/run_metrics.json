@@ -1,0 +1,14 @@
+{
+  "seed": 4878,
+  "initial_objective_value": 54.442499999999995,
+  "best_objective_value": 64.3561,
+  "delta_abs_vs_baseline": 10.352599999999995,
+  "delta_pct_vs_baseline": 19.170238965992937,
+  "iterations": 177,
+  "evaluations": 30044,
+  "runtime_seconds": 81.78769500809722,
+  "accepted_iterations": 31,
+  "improvement_iterations": 31,
+  "stopping_reason": "max_evaluations",
+  "final_perturbation_strength": 2
+}

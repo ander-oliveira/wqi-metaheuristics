@@ -1,0 +1,11 @@
+{
+  "n_runs": 100,
+  "best_objective_mean": 65.070791,
+  "best_objective_median": 65.0419,
+  "best_objective_std": 0.31846848855265075,
+  "best_objective_min": 64.3561,
+  "best_objective_max": 65.68449999999999,
+  "best_objective_iqr": 0.43615000000001203,
+  "runtime_seconds_mean": 84.7233470052178,
+  "evaluations_mean": 29719.72
+}
