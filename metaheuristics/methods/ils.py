@@ -28,6 +28,12 @@ class ILSRuntimeConfig:
     local_search_neighbor_sample: int = 64
     local_search_max_steps: int = 25
     perturbation_strength: int = 2
+    perturbation_mode: str = "dimension_preserving_block"
+    perturbation_block_size: int = 2
+    adaptive_perturbation: bool = True
+    perturbation_min_strength: int = 1
+    perturbation_max_strength: Optional[int] = None
+    perturbation_adapt_every: int = 10
     objective_epsilon: float = 1e-12
     acceptance_criterion: str = "better"
     experiment_mode: bool = True
@@ -115,7 +121,8 @@ def _candidate_matrix_to_allocation_items(candidate_matrix: np.ndarray,
 
 def _sample_feasible_relocation_move(candidate_matrix: np.ndarray,
                                      random_generator: np.random.Generator,
-                                     allowed_source_rows: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+                                     allowed_source_rows: np.ndarray,
+                                     preserve_dimension: bool = False) -> Optional[Tuple[int, int, int, int]]:
     if allowed_source_rows.size == 0:
         return None
 
@@ -130,7 +137,7 @@ def _sample_feasible_relocation_move(candidate_matrix: np.ndarray,
         source_row_local, source_col = source_positions[source_idx]
         source_row = int(allowed_source_rows[int(source_row_local)])
         target_row = int(allowed_source_rows[int(random_generator.integers(0, n_allowed_rows))])
-        target_col = int(random_generator.integers(0, n_cols))
+        target_col = int(source_col) if preserve_dimension else int(random_generator.integers(0, n_cols))
         if source_row == target_row and source_col == target_col:
             continue
         return int(source_row), int(source_col), target_row, target_col
@@ -169,19 +176,68 @@ def _evaluate_candidate_matrix(candidate_matrix: np.ndarray,
 def _apply_perturbation(candidate_matrix: np.ndarray,
                         random_generator: np.random.Generator,
                         perturbation_strength: int,
-                        allowed_source_rows: np.ndarray) -> int:
+                        allowed_source_rows: np.ndarray,
+                        preserve_dimension: bool = False) -> int:
     applied_moves = 0
     for _ in range(max(0, int(perturbation_strength))):
         relocation_move = _sample_feasible_relocation_move(
             candidate_matrix=candidate_matrix,
             random_generator=random_generator,
             allowed_source_rows=allowed_source_rows,
+            preserve_dimension=preserve_dimension,
         )
         if relocation_move is None:
             break
         source_row, source_col, target_row, target_col = relocation_move
         _apply_relocation_move(candidate_matrix, source_row, source_col, target_row, target_col)
         applied_moves += 1
+    return applied_moves
+
+
+def _apply_dimension_preserving_block_perturbation(candidate_matrix: np.ndarray,
+                                                    random_generator: np.random.Generator,
+                                                    perturbation_strength: int,
+                                                    allowed_source_rows: np.ndarray,
+                                                    block_size: int = 2) -> int:
+    n_blocks = max(0, int(perturbation_strength))
+    block_moves = max(1, int(block_size))
+    applied_moves = 0
+    last_move: Optional[Tuple[int, int, int, int]] = None
+
+    for _ in range(n_blocks):
+        block_applied = 0
+        block_attempts_limit = max(12, block_moves * 12)
+        block_attempts = 0
+        while block_applied < block_moves and block_attempts < block_attempts_limit:
+            block_attempts += 1
+            relocation_move = _sample_feasible_relocation_move(
+                candidate_matrix=candidate_matrix,
+                random_generator=random_generator,
+                allowed_source_rows=allowed_source_rows,
+                preserve_dimension=True,
+            )
+            if relocation_move is None:
+                break
+
+            source_row, source_col, target_row, target_col = relocation_move
+            # Avoid trivial immediate inverse move inside the perturbation block.
+            if (
+                last_move is not None
+                and source_row == last_move[2]
+                and target_row == last_move[0]
+                and source_col == last_move[1]
+                and target_col == last_move[3]
+            ):
+                continue
+
+            _apply_relocation_move(candidate_matrix, source_row, source_col, target_row, target_col)
+            applied_moves += 1
+            block_applied += 1
+            last_move = relocation_move
+
+        if block_applied == 0:
+            break
+
     return applied_moves
 
 
@@ -192,7 +248,8 @@ def _run_local_search_first_improvement(candidate_matrix: np.ndarray,
                                         max_local_search_steps: int,
                                         local_search_neighbor_sample: int,
                                         allowed_source_rows: np.ndarray,
-                                        objective_epsilon: float) -> Dict[str, object]:
+                                        objective_epsilon: float,
+                                        preserve_dimension: bool = False) -> Dict[str, object]:
     total_evaluations = 0
     accepted_local_moves = 0
     local_search_steps = 0
@@ -213,6 +270,7 @@ def _run_local_search_first_improvement(candidate_matrix: np.ndarray,
                 candidate_matrix=candidate_matrix,
                 random_generator=random_generator,
                 allowed_source_rows=allowed_source_rows,
+                preserve_dimension=preserve_dimension,
             )
             if relocation_move is None:
                 break
@@ -275,6 +333,34 @@ def _resolve_allowed_source_rows(context: MetaheuristicContext,
         if row_idx is not None:
             allowed_rows.append(int(row_idx))
     return np.asarray(sorted(set(allowed_rows)), dtype=np.int32)
+
+
+def _validate_candidate_matrix_after_perturbation(candidate_matrix: np.ndarray,
+                                                  total_sum_before: float,
+                                                  column_sums_before: np.ndarray,
+                                                  outside_allowed_rows: np.ndarray,
+                                                  outside_allowed_matrix_before: Optional[np.ndarray],
+                                                  perturbation_mode: str) -> None:
+    total_sum_after = float(candidate_matrix.sum())
+    if not np.isclose(total_sum_after, float(total_sum_before), rtol=0.0, atol=1e-9):
+        raise ValueError(
+            "ILS perturbation violated total budget conservation: "
+            f"before={float(total_sum_before):.8f} after={total_sum_after:.8f}"
+        )
+
+    if np.any(candidate_matrix < -1e-12):
+        min_value = float(np.min(candidate_matrix))
+        raise ValueError(f"ILS perturbation produced negative allocation values (min={min_value:.8e}).")
+
+    if perturbation_mode == "dimension_preserving_block":
+        column_sums_after = candidate_matrix.sum(axis=0)
+        if not np.allclose(column_sums_after, column_sums_before, rtol=0.0, atol=1e-9):
+            raise ValueError("ILS perturbation violated per-dimension (column) budget conservation.")
+
+    if outside_allowed_rows.size > 0 and outside_allowed_matrix_before is not None:
+        outside_allowed_after = candidate_matrix[outside_allowed_rows, :]
+        if not np.allclose(outside_allowed_after, outside_allowed_matrix_before, rtol=0.0, atol=1e-9):
+            raise ValueError("ILS perturbation changed allocations outside allowed_source_rows.")
 
 
 def _determine_stopping_reason(evaluations: int,
@@ -484,6 +570,8 @@ def _run_single_seed_ils(seed_value: int,
     # s0 = GenerateInitialSolution
     # s* = LocalSearch(s0)
     current_candidate_matrix = np.asarray(initial_candidate_matrix, dtype=np.float64).copy()
+    all_rows = np.arange(current_candidate_matrix.shape[0], dtype=np.int32)
+    outside_allowed_rows = np.setdiff1d(all_rows, allowed_source_rows, assume_unique=True)
     initial_eval_start = perf_counter()
     initial_eval_result, initial_eval_timing = _evaluate_candidate_matrix(current_candidate_matrix, objective_state)
     initial_eval_elapsed = float(perf_counter() - initial_eval_start)
@@ -517,6 +605,7 @@ def _run_single_seed_ils(seed_value: int,
         local_search_neighbor_sample=config.local_search_neighbor_sample,
         allowed_source_rows=allowed_source_rows,
         objective_epsilon=config.objective_epsilon,
+        preserve_dimension=True,
     )
     initial_local_search_elapsed = float(perf_counter() - initial_local_search_start)
     current_objective_value = float(initial_local_search_result["objective_value"])
@@ -536,7 +625,20 @@ def _run_single_seed_ils(seed_value: int,
     improvement_iterations = 0
     no_improve_streak = 0
 
-    perturb_current = max(1, min(int(config.perturbation_strength), int(context.budget)))
+    perturbation_mode = str(config.perturbation_mode).strip().lower() or "dimension_preserving_block"
+    perturb_block_size = max(1, int(config.perturbation_block_size))
+    perturb_adapt_every = max(1, int(config.perturbation_adapt_every))
+    perturb_min_strength = max(1, min(int(config.perturbation_min_strength), int(context.budget)))
+    if config.perturbation_max_strength is None:
+        perturb_max_strength = int(context.budget)
+    else:
+        perturb_max_strength = int(config.perturbation_max_strength)
+    perturb_max_strength = max(perturb_min_strength, min(perturb_max_strength, int(context.budget)))
+    perturb_base_strength = max(
+        perturb_min_strength,
+        min(int(config.perturbation_strength), perturb_max_strength),
+    )
+    perturb_current = perturb_base_strength
     progress_log_every = max(1, int(config.log_every_iterations))
     if config.log_enabled:
         print(
@@ -545,6 +647,9 @@ def _run_single_seed_ils(seed_value: int,
             f"after_ls={current_objective_value:.4f} "
             f"best={best_objective_value:.4f} "
             f"perturbation={perturb_current} "
+            f"perturb_mode={perturbation_mode} "
+            f"block_size={perturb_block_size} "
+            f"adaptive={config.adaptive_perturbation} "
             f"acceptance={config.acceptance_criterion}"
         )
 
@@ -583,15 +688,51 @@ def _run_single_seed_ils(seed_value: int,
         best_objective_before_iteration = best_objective_value
 
         candidate_matrix = current_candidate_matrix.copy()
+        perturb_strength_used = int(perturb_current)
+        perturb_total_before = 0.0
+        perturb_column_sums_before: Optional[np.ndarray] = None
+        outside_allowed_before: Optional[np.ndarray] = None
+        if config.debug_mode:
+            perturb_total_before = float(candidate_matrix.sum())
+            perturb_column_sums_before = candidate_matrix.sum(axis=0).copy()
+            outside_allowed_before = (
+                candidate_matrix[outside_allowed_rows, :].copy()
+                if outside_allowed_rows.size > 0
+                else None
+            )
+
         perturb_start = perf_counter()
-        applied_perturbation_moves = _apply_perturbation(
-            candidate_matrix=candidate_matrix,
-            random_generator=random_generator,
-            perturbation_strength=perturb_current,
-            allowed_source_rows=allowed_source_rows,
-        )
+        if perturbation_mode == "dimension_preserving_block":
+            applied_perturbation_moves = _apply_dimension_preserving_block_perturbation(
+                candidate_matrix=candidate_matrix,
+                random_generator=random_generator,
+                perturbation_strength=perturb_strength_used,
+                allowed_source_rows=allowed_source_rows,
+                block_size=perturb_block_size,
+            )
+        else:
+            applied_perturbation_moves = _apply_perturbation(
+                candidate_matrix=candidate_matrix,
+                random_generator=random_generator,
+                perturbation_strength=perturb_strength_used,
+                allowed_source_rows=allowed_source_rows,
+                preserve_dimension=True,
+            )
         perturb_elapsed = float(perf_counter() - perturb_start)
         profiling_totals["iteration_perturbation_s"] += perturb_elapsed
+        if config.debug_mode:
+            _validate_candidate_matrix_after_perturbation(
+                candidate_matrix=candidate_matrix,
+                total_sum_before=perturb_total_before,
+                column_sums_before=(
+                    perturb_column_sums_before
+                    if perturb_column_sums_before is not None
+                    else np.zeros(candidate_matrix.shape[1], dtype=np.float64)
+                ),
+                outside_allowed_rows=outside_allowed_rows,
+                outside_allowed_matrix_before=outside_allowed_before,
+                perturbation_mode=perturbation_mode,
+            )
 
         candidate_eval_start = perf_counter()
         candidate_eval_result, candidate_eval_timing = _evaluate_candidate_matrix(candidate_matrix, objective_state)
@@ -614,6 +755,7 @@ def _run_single_seed_ils(seed_value: int,
             local_search_neighbor_sample=config.local_search_neighbor_sample,
             allowed_source_rows=allowed_source_rows,
             objective_epsilon=config.objective_epsilon,
+            preserve_dimension=True,
         )
         local_search_elapsed = float(perf_counter() - local_search_start)
         candidate_objective_value = float(local_search_result["objective_value"])
@@ -648,6 +790,13 @@ def _run_single_seed_ils(seed_value: int,
             no_improve_streak = 0
         else:
             no_improve_streak += 1
+
+        if improved:
+            perturb_current = perturb_base_strength
+        elif config.adaptive_perturbation:
+            if no_improve_streak > 0 and (no_improve_streak % perturb_adapt_every == 0):
+                perturb_current = min(perturb_current + 1, perturb_max_strength)
+
         acceptance_elapsed = float(perf_counter() - acceptance_start)
         profiling_totals["iteration_acceptance_update_s"] += acceptance_elapsed
 
@@ -664,7 +813,7 @@ def _run_single_seed_ils(seed_value: int,
             "delta_vs_best_prev": float(best_objective_value - best_objective_before_iteration),
             "accepted": bool(accepted),
             "improved": bool(improved),
-            "perturbation_strength": int(perturb_current),
+            "perturbation_strength": int(perturb_strength_used),
             "no_improve_streak": int(no_improve_streak),
             "local_search_accepted_moves": int(local_search_result["accepted_local_moves"]),
             "applied_perturbation_moves": int(applied_perturbation_moves),
@@ -701,7 +850,8 @@ def _run_single_seed_ils(seed_value: int,
             print(
                 f"[ILS][seed={seed_value}] iter={iterations} eval={evaluations} "
                 f"candidate={candidate_objective_value:.4f} current={current_objective_value:.4f} "
-                f"best={best_objective_value:.4f} perturbation={perturb_current} "
+                f"best={best_objective_value:.4f} perturbation={perturb_strength_used} "
+                f"pert_mode={perturbation_mode} block_size={perturb_block_size} "
                 f"pert_moves={applied_perturbation_moves} accepted={accepted} "
                 f"improved={improved} no_improve={no_improve_streak} "
                 f"ls_acc={int(local_search_result['accepted_local_moves'])} "
@@ -735,7 +885,8 @@ def _run_single_seed_ils(seed_value: int,
             f"accepted={accepted_iterations} improved={improvement_iterations} "
             f"stop={stopping_reason} "
             f"runtime={runtime_seconds:.4f}s eval_total={profiling_totals['evaluation_total_s']:.4f}s "
-            f"eval_calls={profiling_totals['evaluation_calls']}"
+            f"eval_calls={profiling_totals['evaluation_calls']} "
+            f"pert_mode={perturbation_mode} block_size={perturb_block_size}"
         )
 
     delta_abs_vs_baseline = None
@@ -788,8 +939,20 @@ def run_ils(context: MetaheuristicContext) -> dict:
             "message": "No allocation candidates available.",
         }
 
+    perturbation_mode = os.getenv("ILS_PERTURBATION_MODE", "dimension_preserving_block")
+    perturbation_max_strength_raw = os.getenv("ILS_PERTURBATION_MAX_STRENGTH")
+    perturbation_max_strength = None
+    if perturbation_max_strength_raw is not None and str(perturbation_max_strength_raw).strip() != "":
+        perturbation_max_strength = int(perturbation_max_strength_raw)
+
     config = ILSRuntimeConfig(
         perturbation_strength=max(1, int(os.getenv("ILS_PERTURBATION_STRENGTH", "2"))),
+        perturbation_mode=str(perturbation_mode).strip().lower() or "dimension_preserving_block",
+        perturbation_block_size=max(1, int(os.getenv("ILS_PERTURBATION_BLOCK_SIZE", "2"))),
+        adaptive_perturbation=os.getenv("ILS_ADAPTIVE_PERTURBATION", "1") != "0",
+        perturbation_min_strength=max(1, int(os.getenv("ILS_PERTURBATION_MIN_STRENGTH", "1"))),
+        perturbation_max_strength=perturbation_max_strength,
+        perturbation_adapt_every=max(1, int(os.getenv("ILS_PERTURBATION_ADAPT_EVERY", "10"))),
         acceptance_criterion="better",
         experiment_mode=os.getenv("ILS_EXPERIMENT_MODE", "1") != "0",
         debug_mode=os.getenv("ILS_DEBUG_MODE", "0") == "1",
