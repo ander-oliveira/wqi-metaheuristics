@@ -146,14 +146,23 @@ def _apply_relocation_move(candidate_matrix: np.ndarray,
 
 
 def _evaluate_candidate_matrix(candidate_matrix: np.ndarray,
-                               objective_state: ObjectiveStateND) -> Dict[str, object]:
+                               objective_state: ObjectiveStateND) -> Tuple[Dict[str, object], Dict[str, float]]:
+    build_start = perf_counter()
     final_indicator_matrix = build_final_indicator_matrix_nd(
         candidate_matrix=candidate_matrix,
         objective_state=objective_state,
     )
-    return objective_function(
+    build_end = perf_counter()
+    objective_start = build_end
+    eval_result = objective_function(
         final_indicator_matrix=final_indicator_matrix,
     )
+    objective_end = perf_counter()
+    return eval_result, {
+        "build_final_matrix_s": float(build_end - build_start),
+        "objective_eval_s": float(objective_end - objective_start),
+        "total_eval_s": float(objective_end - build_start),
+    }
 
 
 def _apply_perturbation(candidate_matrix: np.ndarray,
@@ -187,6 +196,13 @@ def _run_local_search_first_improvement(candidate_matrix: np.ndarray,
     accepted_local_moves = 0
     local_search_steps = 0
     objective_value = float(current_objective_value)
+    local_search_start = perf_counter()
+    eval_time_total = 0.0
+    eval_build_time_total = 0.0
+    eval_objective_time_total = 0.0
+    move_apply_time_total = 0.0
+    move_revert_time_total = 0.0
+    neighbors_tested = 0
 
     for _ in range(max_local_search_steps):
         local_search_steps += 1
@@ -201,10 +217,16 @@ def _run_local_search_first_improvement(candidate_matrix: np.ndarray,
                 break
 
             source_row, source_col, target_row, target_col = relocation_move
+            move_apply_start = perf_counter()
             _apply_relocation_move(candidate_matrix, source_row, source_col, target_row, target_col)
+            move_apply_time_total += float(perf_counter() - move_apply_start)
+            neighbors_tested += 1
 
-            evaluation_result = _evaluate_candidate_matrix(candidate_matrix, objective_state)
+            evaluation_result, eval_timing = _evaluate_candidate_matrix(candidate_matrix, objective_state)
             total_evaluations += 1
+            eval_time_total += float(eval_timing["total_eval_s"])
+            eval_build_time_total += float(eval_timing["build_final_matrix_s"])
+            eval_objective_time_total += float(eval_timing["objective_eval_s"])
             trial_objective_value = float(evaluation_result['objective_value'])
 
             if trial_objective_value > (objective_value + objective_epsilon):
@@ -213,16 +235,28 @@ def _run_local_search_first_improvement(candidate_matrix: np.ndarray,
                 found_improvement = True
                 break
 
+            move_revert_start = perf_counter()
             _apply_relocation_move(candidate_matrix, target_row, target_col, source_row, source_col)
+            move_revert_time_total += float(perf_counter() - move_revert_start)
 
         if not found_improvement:
             break
 
+    local_search_total_time = float(perf_counter() - local_search_start)
     return {
         "objective_value": objective_value,
         "total_evaluations": total_evaluations,
         "accepted_local_moves": accepted_local_moves,
         "local_search_steps": local_search_steps,
+        "profiling": {
+            "local_search_total_s": local_search_total_time,
+            "evaluation_total_s": eval_time_total,
+            "evaluation_build_final_matrix_s": eval_build_time_total,
+            "evaluation_objective_s": eval_objective_time_total,
+            "move_apply_total_s": move_apply_time_total,
+            "move_revert_total_s": move_revert_time_total,
+            "neighbors_tested": int(neighbors_tested),
+        },
     }
 
 
@@ -274,11 +308,38 @@ def _compute_summary_statistics(per_seed_run_summaries: List[Dict[str, object]])
             "best_objective_iqr": None,
             "runtime_seconds_mean": None,
             "evaluations_mean": None,
+            "profiling_means": {},
         }
 
     objective_values = [float(item["best_objective_value"]) for item in per_seed_run_summaries]
     runtime_values = [float(item["runtime_seconds"]) for item in per_seed_run_summaries]
     evaluation_values = [int(item["evaluations"]) for item in per_seed_run_summaries]
+    profile_mean_fields = [
+        "profile_total_runtime_s",
+        "profile_initial_eval_s",
+        "profile_initial_local_search_s",
+        "profile_iteration_perturbation_s",
+        "profile_iteration_candidate_eval_s",
+        "profile_iteration_local_search_s",
+        "profile_iteration_acceptance_update_s",
+        "profile_iteration_bookkeeping_s",
+        "profile_iteration_logging_s",
+        "profile_evaluation_build_final_matrix_s",
+        "profile_evaluation_objective_only_s",
+        "profile_evaluation_total_s",
+        "profile_evaluation_calls",
+        "profile_evaluation_avg_s",
+        "profile_local_search_calls",
+    ]
+    profiling_means: Dict[str, float] = {}
+    for field_name in profile_mean_fields:
+        field_values = [
+            float(item[field_name])
+            for item in per_seed_run_summaries
+            if item.get(field_name) is not None
+        ]
+        if field_values:
+            profiling_means[field_name] = float(np.mean(field_values))
 
     return {
         "n_runs": len(per_seed_run_summaries),
@@ -290,6 +351,7 @@ def _compute_summary_statistics(per_seed_run_summaries: List[Dict[str, object]])
         "best_objective_iqr": _safe_iqr(objective_values),
         "runtime_seconds_mean": float(np.mean(runtime_values)),
         "evaluations_mean": float(np.mean(evaluation_values)),
+        "profiling_means": profiling_means,
     }
 
 
@@ -344,6 +406,7 @@ def _save_per_seed_artifacts(experiment_directories: Dict[str, Path],
         "improvement_iterations": int(per_seed_result["improvement_iterations"]),
         "stopping_reason": per_seed_result["stopping_reason"],
         "final_perturbation_strength": int(per_seed_result["final_perturbation_strength"]),
+        "profiling": per_seed_result.get("profiling", {}),
     }
     run_metrics_path = seed_dir / "run_metrics.json"
     with run_metrics_path.open("w", encoding="utf-8") as file_obj:
@@ -420,11 +483,30 @@ def _run_single_seed_ils(seed_value: int,
     # s0 = GenerateInitialSolution
     # s* = LocalSearch(s0)
     current_candidate_matrix = np.asarray(initial_candidate_matrix, dtype=np.float64).copy()
-    initial_eval_result = _evaluate_candidate_matrix(current_candidate_matrix, objective_state)
+    initial_eval_start = perf_counter()
+    initial_eval_result, initial_eval_timing = _evaluate_candidate_matrix(current_candidate_matrix, objective_state)
+    initial_eval_elapsed = float(perf_counter() - initial_eval_start)
     initial_objective_value = float(initial_eval_result["objective_value"])
     evaluations = 1
     iterations = 0
 
+    profiling_totals = {
+        "initial_eval_s": initial_eval_elapsed,
+        "initial_local_search_s": 0.0,
+        "iteration_perturbation_s": 0.0,
+        "iteration_candidate_eval_s": 0.0,
+        "iteration_local_search_s": 0.0,
+        "iteration_acceptance_update_s": 0.0,
+        "iteration_bookkeeping_s": 0.0,
+        "iteration_logging_s": 0.0,
+        "evaluation_build_final_matrix_s": float(initial_eval_timing["build_final_matrix_s"]),
+        "evaluation_objective_only_s": float(initial_eval_timing["objective_eval_s"]),
+        "evaluation_total_s": float(initial_eval_timing["total_eval_s"]),
+        "evaluation_calls": 1,
+        "local_search_calls": 0,
+    }
+
+    initial_local_search_start = perf_counter()
     initial_local_search_result = _run_local_search_first_improvement(
         candidate_matrix=current_candidate_matrix,
         objective_state=objective_state,
@@ -435,8 +517,16 @@ def _run_single_seed_ils(seed_value: int,
         allowed_source_rows=allowed_source_rows,
         objective_epsilon=config.objective_epsilon,
     )
+    initial_local_search_elapsed = float(perf_counter() - initial_local_search_start)
     current_objective_value = float(initial_local_search_result["objective_value"])
     evaluations += int(initial_local_search_result["total_evaluations"])
+    initial_ls_profile = initial_local_search_result["profiling"]
+    profiling_totals["initial_local_search_s"] += initial_local_search_elapsed
+    profiling_totals["evaluation_build_final_matrix_s"] += float(initial_ls_profile["evaluation_build_final_matrix_s"])
+    profiling_totals["evaluation_objective_only_s"] += float(initial_ls_profile["evaluation_objective_s"])
+    profiling_totals["evaluation_total_s"] += float(initial_ls_profile["evaluation_total_s"])
+    profiling_totals["evaluation_calls"] += int(initial_local_search_result["total_evaluations"])
+    profiling_totals["local_search_calls"] += 1
 
     best_candidate_matrix = current_candidate_matrix.copy()
     best_objective_value = current_objective_value
@@ -475,24 +565,45 @@ def _run_single_seed_ils(seed_value: int,
         "no_improve_streak": 0,
         "local_search_accepted_moves": int(initial_local_search_result["accepted_local_moves"]),
         "applied_perturbation_moves": 0,
+        "t_initial_eval_s": initial_eval_elapsed,
+        "t_initial_local_search_s": initial_local_search_elapsed,
+        "t_perturb_s": 0.0,
+        "t_candidate_eval_s": 0.0,
+        "t_local_search_s": 0.0,
+        "t_acceptance_s": 0.0,
+        "t_bookkeeping_s": 0.0,
+        "t_logging_s": 0.0,
+        "t_iter_total_s": 0.0,
     }]
 
     while evaluations < config.max_evaluations and iterations < config.max_iterations and no_improve_streak < config.max_no_improve:
+        iter_start = perf_counter()
         iterations += 1
         best_objective_before_iteration = best_objective_value
 
         candidate_matrix = current_candidate_matrix.copy()
+        perturb_start = perf_counter()
         applied_perturbation_moves = _apply_perturbation(
             candidate_matrix=candidate_matrix,
             random_generator=random_generator,
             perturbation_strength=perturb_current,
             allowed_source_rows=allowed_source_rows,
         )
+        perturb_elapsed = float(perf_counter() - perturb_start)
+        profiling_totals["iteration_perturbation_s"] += perturb_elapsed
 
-        candidate_eval_result = _evaluate_candidate_matrix(candidate_matrix, objective_state)
+        candidate_eval_start = perf_counter()
+        candidate_eval_result, candidate_eval_timing = _evaluate_candidate_matrix(candidate_matrix, objective_state)
+        candidate_eval_elapsed = float(perf_counter() - candidate_eval_start)
         candidate_objective_value = float(candidate_eval_result["objective_value"])
         evaluations += 1
+        profiling_totals["iteration_candidate_eval_s"] += candidate_eval_elapsed
+        profiling_totals["evaluation_build_final_matrix_s"] += float(candidate_eval_timing["build_final_matrix_s"])
+        profiling_totals["evaluation_objective_only_s"] += float(candidate_eval_timing["objective_eval_s"])
+        profiling_totals["evaluation_total_s"] += float(candidate_eval_timing["total_eval_s"])
+        profiling_totals["evaluation_calls"] += 1
 
+        local_search_start = perf_counter()
         local_search_result = _run_local_search_first_improvement(
             candidate_matrix=candidate_matrix,
             objective_state=objective_state,
@@ -503,9 +614,18 @@ def _run_single_seed_ils(seed_value: int,
             allowed_source_rows=allowed_source_rows,
             objective_epsilon=config.objective_epsilon,
         )
+        local_search_elapsed = float(perf_counter() - local_search_start)
         candidate_objective_value = float(local_search_result["objective_value"])
         evaluations += int(local_search_result["total_evaluations"])
+        local_ls_profile = local_search_result["profiling"]
+        profiling_totals["iteration_local_search_s"] += local_search_elapsed
+        profiling_totals["evaluation_build_final_matrix_s"] += float(local_ls_profile["evaluation_build_final_matrix_s"])
+        profiling_totals["evaluation_objective_only_s"] += float(local_ls_profile["evaluation_objective_s"])
+        profiling_totals["evaluation_total_s"] += float(local_ls_profile["evaluation_total_s"])
+        profiling_totals["evaluation_calls"] += int(local_search_result["total_evaluations"])
+        profiling_totals["local_search_calls"] += 1
 
+        acceptance_start = perf_counter()
         accepted = False
         improved = False
         accepted = _acceptance_criterion_better(
@@ -527,7 +647,10 @@ def _run_single_seed_ils(seed_value: int,
             no_improve_streak = 0
         else:
             no_improve_streak += 1
+        acceptance_elapsed = float(perf_counter() - acceptance_start)
+        profiling_totals["iteration_acceptance_update_s"] += acceptance_elapsed
 
+        bookkeeping_start = perf_counter()
         elapsed_seconds = perf_counter() - start_time
         trajectory_records.append({
             "seed": int(seed_value),
@@ -544,7 +667,19 @@ def _run_single_seed_ils(seed_value: int,
             "no_improve_streak": int(no_improve_streak),
             "local_search_accepted_moves": int(local_search_result["accepted_local_moves"]),
             "applied_perturbation_moves": int(applied_perturbation_moves),
+            "t_initial_eval_s": 0.0,
+            "t_initial_local_search_s": 0.0,
+            "t_perturb_s": perturb_elapsed,
+            "t_candidate_eval_s": candidate_eval_elapsed,
+            "t_local_search_s": local_search_elapsed,
+            "t_acceptance_s": acceptance_elapsed,
+            "t_bookkeeping_s": 0.0,
+            "t_logging_s": 0.0,
+            "t_iter_total_s": 0.0,
         })
+        bookkeeping_elapsed = float(perf_counter() - bookkeeping_start)
+        profiling_totals["iteration_bookkeeping_s"] += bookkeeping_elapsed
+        trajectory_records[-1]["t_bookkeeping_s"] = bookkeeping_elapsed
 
         should_log_progress = False
         if config.log_enabled:
@@ -558,17 +693,34 @@ def _run_single_seed_ils(seed_value: int,
                     or (config.log_on_acceptance and accepted)
                 )
 
+        logging_elapsed = 0.0
         if should_log_progress:
+            log_start = perf_counter()
+            iter_elapsed_partial = float(perf_counter() - iter_start)
             print(
                 f"[ILS][seed={seed_value}] iter={iterations} eval={evaluations} "
                 f"candidate={candidate_objective_value:.4f} current={current_objective_value:.4f} "
                 f"best={best_objective_value:.4f} perturbation={perturb_current} "
                 f"pert_moves={applied_perturbation_moves} accepted={accepted} "
                 f"improved={improved} no_improve={no_improve_streak} "
-                f"ls_acc={int(local_search_result['accepted_local_moves'])}"
+                f"ls_acc={int(local_search_result['accepted_local_moves'])} "
+                f"t_pert={perturb_elapsed:.4f}s t_eval={candidate_eval_elapsed:.4f}s "
+                f"t_ls={local_search_elapsed:.4f}s t_iter~{iter_elapsed_partial:.4f}s"
             )
+            logging_elapsed = float(perf_counter() - log_start)
+        profiling_totals["iteration_logging_s"] += logging_elapsed
+        trajectory_records[-1]["t_logging_s"] = logging_elapsed
+        trajectory_records[-1]["t_iter_total_s"] = float(perf_counter() - iter_start)
 
     runtime_seconds = float(perf_counter() - start_time)
+    profiling_totals["total_runtime_s"] = runtime_seconds
+    if profiling_totals["evaluation_calls"] > 0:
+        profiling_totals["evaluation_avg_s"] = float(
+            profiling_totals["evaluation_total_s"] / float(profiling_totals["evaluation_calls"])
+        )
+    else:
+        profiling_totals["evaluation_avg_s"] = 0.0
+
     stopping_reason = _determine_stopping_reason(
         evaluations=evaluations,
         iterations=iterations,
@@ -580,7 +732,9 @@ def _run_single_seed_ils(seed_value: int,
             f"[ILS][seed={seed_value}] done "
             f"best={best_objective_value:.4f} eval={evaluations} iter={iterations} "
             f"accepted={accepted_iterations} improved={improvement_iterations} "
-            f"stop={stopping_reason}"
+            f"stop={stopping_reason} "
+            f"runtime={runtime_seconds:.4f}s eval_total={profiling_totals['evaluation_total_s']:.4f}s "
+            f"eval_calls={profiling_totals['evaluation_calls']}"
         )
 
     delta_abs_vs_baseline = None
@@ -611,6 +765,7 @@ def _run_single_seed_ils(seed_value: int,
         "trajectory": trajectory_records,
         "best_candidate_matrix": best_candidate_matrix,
         "best_allocation_items": best_allocation_items,
+        "profiling": profiling_totals,
     }
 
 
@@ -694,6 +849,7 @@ def run_ils(context: MetaheuristicContext) -> dict:
         if debug_files:
             seed_result["debug_files"] = debug_files
         per_seed_result_records.append(seed_result)
+        seed_profile = seed_result.get("profiling", {})
 
         per_seed_run_summaries.append({
             "seed": seed_result["seed"],
@@ -709,6 +865,21 @@ def run_ils(context: MetaheuristicContext) -> dict:
             "stopping_reason": seed_result["stopping_reason"],
             "final_perturbation_strength": seed_result["final_perturbation_strength"],
             "seed_dir": seed_artifact_paths.get("seed_dir"),
+            "profile_total_runtime_s": seed_profile.get("total_runtime_s"),
+            "profile_initial_eval_s": seed_profile.get("initial_eval_s"),
+            "profile_initial_local_search_s": seed_profile.get("initial_local_search_s"),
+            "profile_iteration_perturbation_s": seed_profile.get("iteration_perturbation_s"),
+            "profile_iteration_candidate_eval_s": seed_profile.get("iteration_candidate_eval_s"),
+            "profile_iteration_local_search_s": seed_profile.get("iteration_local_search_s"),
+            "profile_iteration_acceptance_update_s": seed_profile.get("iteration_acceptance_update_s"),
+            "profile_iteration_bookkeeping_s": seed_profile.get("iteration_bookkeeping_s"),
+            "profile_iteration_logging_s": seed_profile.get("iteration_logging_s"),
+            "profile_evaluation_build_final_matrix_s": seed_profile.get("evaluation_build_final_matrix_s"),
+            "profile_evaluation_objective_only_s": seed_profile.get("evaluation_objective_only_s"),
+            "profile_evaluation_total_s": seed_profile.get("evaluation_total_s"),
+            "profile_evaluation_calls": seed_profile.get("evaluation_calls"),
+            "profile_evaluation_avg_s": seed_profile.get("evaluation_avg_s"),
+            "profile_local_search_calls": seed_profile.get("local_search_calls"),
         })
 
     global_best_seed_result = max(
@@ -736,6 +907,7 @@ def run_ils(context: MetaheuristicContext) -> dict:
         "global_best_seed": int(global_best_seed_result["seed"]),
         "global_best_objective_value": float(global_best_seed_result["best_objective_value"]),
         "global_best_allocation_size": len(global_best_seed_result["best_allocation_items"]),
+        "global_best_profiling": global_best_seed_result.get("profiling", {}),
         "summary_stats": summary_stats,
         "per_seed_results": per_seed_run_summaries,
         "output_dir": str(experiment_directories["root_dir"].resolve()) if experiment_directories is not None else None,
