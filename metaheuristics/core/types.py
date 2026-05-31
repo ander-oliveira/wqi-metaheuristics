@@ -30,6 +30,7 @@ class MetaheuristicContext:
     """Shared context passed to each metaheuristic method implementation."""
     df_walkability: pd.DataFrame
     df_hex_time_matrix: pd.DataFrame
+    location: str
     budget: int
     method_code: str
     method_name: str

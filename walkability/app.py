@@ -1,5 +1,6 @@
 from .common import *
 from metaheuristics import ask_metaheuristic_method, load_seeds, walk_meta_opt
+from time import perf_counter
 
 from .hexagons import select_random_hexagons
 from .iqc import compute_walkability_for_all_hexagons
@@ -20,10 +21,11 @@ def _ask_execution_mode() -> str:
         print("\nSelect execution mode:")
         print("1 - Run full pipeline for all walking profiles")
         print("2 - Use existing dataset for selected location")
+        print("3 - Use existing datasets for ALL locations and ALL available profiles")
         choice = input("Enter option number: ").strip()
-        if choice in {'1', '2'}:
+        if choice in {'1', '2', '3'}:
             return choice
-        print("Invalid option. Choose 1 or 2.")
+        print("Invalid option. Choose 1, 2, or 3.")
 
 
 def _build_profiles_to_run(walking_profiles: dict) -> list:
@@ -167,7 +169,8 @@ def _use_existing_dataset_mode(location: str,
                                selected_profile_key: str,
                                h3_resolution: int,
                                distance: int,
-                               auto_select_single_dataset: bool = False) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[str]]:
+                               auto_select_single_dataset: bool = False,
+                               auto_select_first_dataset: bool = False) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[str]]:
     available = _find_existing_walkability_datasets(
         location=location,
         key_location=key_location,
@@ -179,6 +182,26 @@ def _use_existing_dataset_mode(location: str,
     if not available:
         print(f"\nNo existing walkability datasets were found for profile: {selected_profile_key}.")
         return None, None, None
+
+    if auto_select_first_dataset:
+        selected = available[0]
+        if len(available) > 1:
+            print(
+                f"\nMultiple datasets found for profile {selected_profile_key}. "
+                "Automatically selecting the first one."
+            )
+        if not selected['has_hex_time_matrix']:
+            print("\nSelected dataset has no hex-time matrix file.")
+            print("Please run execution mode 1 again to generate both required inputs.")
+            return None, None, None
+
+        df_selected = pd.read_csv(selected['file_path'])
+        df_hex_time_matrix = pd.read_csv(selected['hex_time_matrix_path'])
+        print(f"\nAutomatically loaded dataset for profile: {selected['profile_key']}")
+        print(f"Rows: {len(df_selected)} | Columns: {len(df_selected.columns)}")
+        print(f"Columns: {', '.join(df_selected.columns)}")
+        print(f"Hex-time matrix rows: {len(df_hex_time_matrix)}")
+        return df_selected, df_hex_time_matrix, selected['profile_key']
 
     if auto_select_single_dataset and len(available) == 1:
         selected = available[0]
@@ -255,22 +278,100 @@ def _run_metaheuristic_stage(df_walkability: pd.DataFrame,
                              df_hex_time_matrix: pd.DataFrame,
                              walking_profile: str,
                              budget: int,
+                             location: str = "unknown_location",
                              selected_method: Optional[str] = None,
                              seeds: Optional[list] = None) -> Optional[dict]:
+    stage_start_time = perf_counter()
     try:
         method = selected_method if selected_method is not None else ask_metaheuristic_method()
         seed_list = seeds if seeds is not None else load_seeds('seeds.txt')
-        return walk_meta_opt(
+        result = walk_meta_opt(
             df_walkability=df_walkability,
             df_hex_time_matrix=df_hex_time_matrix,
             budget=budget,
             method=method,
             seeds=seed_list,
             walking_profile=walking_profile,
+            location=location,
         )
+        if isinstance(result, dict):
+            result['stage_runtime_seconds'] = float(perf_counter() - stage_start_time)
+        return result
     except Exception as e:
         print(f"Could not initialize metaheuristic stage: {e}")
         return None
+
+
+def _safe_float(value) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_method_runtime_seconds(meta_stage_result: Optional[dict]) -> Optional[float]:
+    if not isinstance(meta_stage_result, dict):
+        return None
+    method_payload = meta_stage_result.get('method_result')
+    if not isinstance(method_payload, dict):
+        return None
+
+    for field_name in ('experiment_runtime_seconds', 'runtime_seconds'):
+        parsed_value = _safe_float(method_payload.get(field_name))
+        if parsed_value is not None:
+            return parsed_value
+    return None
+
+
+def _print_runtime_summary(execution_records: list,
+                           batch_wall_runtime_seconds: Optional[float] = None) -> None:
+    if not execution_records:
+        print("\nNo metaheuristic runs were executed.")
+        return
+
+    profile_totals = {}
+    profile_run_counts = {}
+    total_effective_runtime = 0.0
+    total_wall_runtime = 0.0
+    runs_with_method_runtime = 0
+
+    for record in execution_records:
+        profile_key = str(record.get('profile_key', 'unknown_profile'))
+        method_runtime = _safe_float(record.get('method_runtime_seconds'))
+        wall_runtime = _safe_float(record.get('wall_runtime_seconds'))
+        effective_runtime = method_runtime if method_runtime is not None else wall_runtime
+
+        if effective_runtime is None:
+            continue
+
+        profile_totals[profile_key] = profile_totals.get(profile_key, 0.0) + effective_runtime
+        profile_run_counts[profile_key] = profile_run_counts.get(profile_key, 0) + 1
+        total_effective_runtime += effective_runtime
+
+        if wall_runtime is not None:
+            total_wall_runtime += wall_runtime
+        if method_runtime is not None:
+            runs_with_method_runtime += 1
+
+    print("\n=== Metaheuristic Runtime Summary ===")
+    print(f"Runs executed: {len(execution_records)}")
+    print("Total runtime by walking profile:")
+    for profile_key in sorted(profile_totals.keys()):
+        print(
+            f"- {profile_key}: {profile_totals[profile_key]:.4f}s "
+            f"(runs={profile_run_counts[profile_key]})"
+        )
+    print(f"Total runtime (all locations + all profiles): {total_effective_runtime:.4f}s")
+    print(
+        "Runtime source: "
+        f"method payload for {runs_with_method_runtime}/{len(execution_records)} runs; "
+        "fallback to stage wall time when payload is unavailable."
+    )
+    print(f"Total stage wall-clock runtime (sum of runs): {total_wall_runtime:.4f}s")
+    if batch_wall_runtime_seconds is not None:
+        print(f"Total batch wall-clock runtime (start to finish): {batch_wall_runtime_seconds:.4f}s")
 
 
 def run_cli() -> None:
@@ -338,12 +439,20 @@ def run_cli() -> None:
         raise ValueError('No walking profiles configured.')
 
     execution_mode = _ask_execution_mode()
-    selected_locations = select_locations(allow_all=(execution_mode == '1'))
+    if execution_mode == '1':
+        selected_locations = select_locations(allow_all=True)
+    elif execution_mode == '2':
+        selected_locations = select_locations(allow_all=False)
+    else:
+        selected_locations = select_locations(allow_all=True, force_all=True)
+        print(f"\nExecution mode 3 selected: {len(selected_locations)} locations will run automatically.")
+
     if not selected_locations:
         print("No locations selected.")
         return
 
     if execution_mode == '2':
+        execution_records = []
         for location_idx, (_, location, _, key_location) in enumerate(selected_locations, start=1):
             if len(selected_locations) > 1:
                 print(f"\n=== Location [{location_idx}/{len(selected_locations)}]: {location} ===")
@@ -381,15 +490,91 @@ def run_cli() -> None:
                     print(f"Skipping profile without selected dataset: {selected_profile_key}")
                     continue
 
-                _run_metaheuristic_stage(
+                stage_result = _run_metaheuristic_stage(
                     existing_df,
                     existing_hex_time_matrix,
                     existing_profile,
                     BUDGET,
+                    location=key_location,
                     selected_method=method_for_location,
                     seeds=seeds_for_location,
                 )
+                if stage_result is not None:
+                    execution_records.append({
+                        'location': location,
+                        'key_location': key_location,
+                        'profile_key': existing_profile,
+                        'method_runtime_seconds': _extract_method_runtime_seconds(stage_result),
+                        'wall_runtime_seconds': _safe_float(stage_result.get('stage_runtime_seconds')),
+                    })
 
+        _print_runtime_summary(execution_records)
+
+        print('Done.')
+        return
+
+    if execution_mode == '3':
+        batch_start_time = perf_counter()
+        method_for_batch = ask_metaheuristic_method()
+        seeds_for_batch = load_seeds('seeds.txt')
+        execution_records = []
+
+        for location_idx, (_, location, _, key_location) in enumerate(selected_locations, start=1):
+            print(f"\n=== Location [{location_idx}/{len(selected_locations)}]: {location} ===")
+            available_profile_keys = _get_available_profile_keys_for_mode2(
+                location=location,
+                key_location=key_location,
+                profiles_to_run=profiles_to_run,
+                h3_resolution=H3_RESOLUTION,
+                distance=DISTANCE,
+            )
+            if not available_profile_keys:
+                print("No existing datasets found for configured profiles in this location. Skipping.")
+                continue
+
+            print(
+                f"Profiles with existing dataset: {', '.join(available_profile_keys)}"
+            )
+            for profile_idx, selected_profile_key in enumerate(available_profile_keys, start=1):
+                print(
+                    f"\n--- Profile [{profile_idx}/{len(available_profile_keys)}] "
+                    f"for {location}: {selected_profile_key} ---"
+                )
+                existing_df, existing_hex_time_matrix, existing_profile = _use_existing_dataset_mode(
+                    location=location,
+                    key_location=key_location,
+                    selected_profile_key=selected_profile_key,
+                    h3_resolution=H3_RESOLUTION,
+                    distance=DISTANCE,
+                    auto_select_first_dataset=True,
+                )
+                if existing_df is None or existing_hex_time_matrix is None or existing_profile is None:
+                    print(f"Skipping profile without valid dataset: {selected_profile_key}")
+                    continue
+
+                stage_result = _run_metaheuristic_stage(
+                    existing_df,
+                    existing_hex_time_matrix,
+                    existing_profile,
+                    BUDGET,
+                    location=key_location,
+                    selected_method=method_for_batch,
+                    seeds=seeds_for_batch,
+                )
+                if stage_result is not None:
+                    execution_records.append({
+                        'location': location,
+                        'key_location': key_location,
+                        'profile_key': existing_profile,
+                        'method_runtime_seconds': _extract_method_runtime_seconds(stage_result),
+                        'wall_runtime_seconds': _safe_float(stage_result.get('stage_runtime_seconds')),
+                    })
+
+        batch_wall_runtime_seconds = float(perf_counter() - batch_start_time)
+        _print_runtime_summary(
+            execution_records,
+            batch_wall_runtime_seconds=batch_wall_runtime_seconds,
+        )
         print('Done.')
         return
 

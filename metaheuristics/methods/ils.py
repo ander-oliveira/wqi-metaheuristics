@@ -56,12 +56,13 @@ def _build_dataset_tag(context: MetaheuristicContext) -> str:
 
 
 def _build_experiment_directories(context: MetaheuristicContext) -> Dict[str, Path]:
+    location_slug = _slugify(context.location)
     profile_slug = _slugify(context.walking_profile)
     dataset_tag = _slugify(_build_dataset_tag(context))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_id = f"run_{timestamp}_budget{context.budget}_seeds{len(context.seeds)}"
 
-    root_dir = Path("results") / "ils" / profile_slug / dataset_tag / run_id
+    root_dir = Path("results") / "ils" / location_slug / profile_slug / dataset_tag / run_id
     config_dir = root_dir / "config"
     summary_dir = root_dir / "summary"
     seed_runs_dir = root_dir / "seed_runs"
@@ -771,6 +772,7 @@ def _run_single_seed_ils(seed_value: int,
 
 def run_ils(context: MetaheuristicContext) -> dict:
     """Run full Iterated Local Search experiment across all seeds."""
+    experiment_start_time = perf_counter()
     if context.objective_state_nd is None:
         return {
             "method_code": context.method_code,
@@ -886,7 +888,15 @@ def run_ils(context: MetaheuristicContext) -> dict:
         per_seed_result_records,
         key=lambda item: float(item["best_objective_value"]),
     )
+    seed_runtimes_total_seconds = float(
+        sum(float(seed_result["runtime_seconds"]) for seed_result in per_seed_result_records)
+    )
+    experiment_runtime_seconds = float(perf_counter() - experiment_start_time)
+    orchestration_runtime_seconds = float(experiment_runtime_seconds - seed_runtimes_total_seconds)
     summary_stats = _compute_summary_statistics(per_seed_run_summaries)
+    summary_stats["seed_runtimes_total_seconds"] = seed_runtimes_total_seconds
+    summary_stats["experiment_runtime_seconds"] = experiment_runtime_seconds
+    summary_stats["orchestration_runtime_seconds"] = orchestration_runtime_seconds
 
     summary_artifacts = {}
     if config.experiment_mode and experiment_directories is not None:
@@ -904,6 +914,9 @@ def run_ils(context: MetaheuristicContext) -> dict:
         "acceptance_criterion": config.acceptance_criterion,
         "n_runs": len(per_seed_result_records),
         "baseline_iqc_total": context.baseline_iqc_total,
+        "experiment_runtime_seconds": experiment_runtime_seconds,
+        "seed_runtimes_total_seconds": seed_runtimes_total_seconds,
+        "orchestration_runtime_seconds": orchestration_runtime_seconds,
         "global_best_seed": int(global_best_seed_result["seed"]),
         "global_best_objective_value": float(global_best_seed_result["best_objective_value"]),
         "global_best_allocation_size": len(global_best_seed_result["best_allocation_items"]),

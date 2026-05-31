@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -39,7 +39,8 @@ def walk_meta_opt(df_walkability: pd.DataFrame,
                   budget: int,
                   method: str,
                   seeds: List[int],
-                  walking_profile: str) -> Dict[str, object]:
+                  walking_profile: str,
+                  location: Optional[str] = None) -> Dict[str, object]:
     """
     Prepare the metaheuristic optimization scenario from:
     - df_walkability (base indicators by hexagon)
@@ -94,6 +95,7 @@ def walk_meta_opt(df_walkability: pd.DataFrame,
     context = MetaheuristicContext(
         df_walkability=df_walkability,
         df_hex_time_matrix=df_hex_time_matrix,
+        location=str(location) if location is not None else "unknown_location",
         budget=int(budget),
         method_code=method,
         method_name=METAHEURISTIC_METHODS[method],
@@ -116,6 +118,7 @@ def walk_meta_opt(df_walkability: pd.DataFrame,
 
     print("\nMetaheuristic setup initialized.")
     print(f"Method: {METAHEURISTIC_METHODS[method]} ({method})")
+    print(f"Location: {context.location}")
     print(f"Profile: {walking_profile}")
     print(f"BUDGET: {budget}")
     print(f"Seeds loaded: {len(seeds)}")
@@ -132,6 +135,7 @@ def walk_meta_opt(df_walkability: pd.DataFrame,
     return {
         'method_code': context.method_code,
         'method_name': context.method_name,
+        'location': context.location,
         'profile_key': context.walking_profile,
         'budget': context.budget,
         'seeds': context.seeds,
@@ -146,7 +150,8 @@ def walk_meta_opt(df_walkability: pd.DataFrame,
 def walk_meta_opt_multi_profile(profile_datasets: Dict[str, Dict[str, pd.DataFrame]],
                                 budget: int,
                                 method: str,
-                                seeds: List[int]) -> Dict[str, object]:
+                                seeds: List[int],
+                                location: Optional[str] = None) -> Dict[str, object]:
     """
     Backward-compatible helper to run `walk_meta_opt` for multiple walking profiles.
 
@@ -179,11 +184,13 @@ def walk_meta_opt_multi_profile(profile_datasets: Dict[str, Dict[str, pd.DataFra
             method=method,
             seeds=seeds,
             walking_profile=profile_key,
+            location=location,
         )
 
     return {
         'method_code': method,
         'method_name': METAHEURISTIC_METHODS.get(method, 'Unknown method'),
+        'location': str(location) if location is not None else "unknown_location",
         'budget': int(budget),
         'seeds': [int(seed) for seed in seeds],
         'profile_results': profile_results,

@@ -78,11 +78,14 @@ def _entry_to_location_tuple(entry: dict) -> Tuple[Tuple[float, float], str, Opt
     )
 
 
-def select_locations(allow_all: bool = True) -> list:
+def select_locations(allow_all: bool = True, force_all: bool = False) -> list:
     entries = _load_location_entries()
     if not entries:
         print("[WARNING] No locations found in locations.csv.")
         return []
+
+    if force_all:
+        return [_entry_to_location_tuple(entry) for entry in entries]
 
     print("\nSelect a location:")
     if allow_all:
