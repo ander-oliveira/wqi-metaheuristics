@@ -1,0 +1,31 @@
+{
+  "n_runs": 100,
+  "best_objective_mean": 51.083321999999995,
+  "best_objective_median": 51.05275,
+  "best_objective_std": 0.3073968193745931,
+  "best_objective_min": 50.3754,
+  "best_objective_max": 51.7495,
+  "best_objective_iqr": 0.39460000000000406,
+  "runtime_seconds_mean": 66.6631456831959,
+  "evaluations_mean": 30157.04,
+  "profiling_means": {
+    "profile_total_runtime_s": 66.6631456831959,
+    "profile_initial_eval_s": 0.0021035711257718502,
+    "profile_initial_local_search_s": 0.12412637925241142,
+    "profile_iteration_perturbation_s": 0.058505192177835855,
+    "profile_iteration_candidate_eval_s": 0.22489617683459073,
+    "profile_iteration_local_search_s": 66.24774482315173,
+    "profile_iteration_acceptance_update_s": 0.0004922757996246219,
+    "profile_iteration_bookkeeping_s": 0.0010076232487335802,
+    "profile_iteration_logging_s": 0.001807471690699458,
+    "profile_evaluation_build_final_matrix_s": 47.82184856269043,
+    "profile_evaluation_objective_only_s": 15.111962856519968,
+    "profile_evaluation_total_s": 62.9338114192104,
+    "profile_evaluation_calls": 30157.04,
+    "profile_evaluation_avg_s": 0.0020868702863645642,
+    "profile_local_search_calls": 111.91
+  },
+  "seed_runtimes_total_seconds": 6666.314568319591,
+  "experiment_runtime_seconds": 6667.711949909106,
+  "orchestration_runtime_seconds": 1.3973815895151347
+}
