@@ -1,6 +1,7 @@
 import json
 import math
 import os
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +44,7 @@ class ILSRuntimeConfig:
     log_every_iterations: int = 10
     log_only_improvements: bool = False
     log_on_acceptance: bool = False
+    seed_parallel_workers: int = 1
 
 
 def _slugify(value: str) -> str:
@@ -555,6 +557,91 @@ def _save_method_result_artifact(experiment_directories: Dict[str, Path],
     return str(method_result_path.resolve())
 
 
+def _resolve_seed_parallel_workers(seed_count: int) -> int:
+    cpu_count = os.cpu_count() or 1
+    default_workers = max(1, cpu_count - 3)
+    raw_workers = os.getenv("ILS_SEED_PARALLEL_WORKERS", os.getenv("ILS_SEED_WORKERS"))
+    requested_workers = default_workers
+    if raw_workers is not None and str(raw_workers).strip() != "":
+        requested_workers = int(raw_workers)
+    return max(1, min(int(seed_count), int(requested_workers)))
+
+
+def _build_per_seed_run_summary(seed_result: Dict[str, object],
+                                seed_artifact_paths: Dict[str, str]) -> Dict[str, object]:
+    seed_profile = seed_result.get("profiling", {})
+    return {
+        "seed": seed_result["seed"],
+        "initial_objective_value": seed_result["initial_objective_value"],
+        "best_objective_value": seed_result["best_objective_value"],
+        "delta_abs_vs_baseline": seed_result["delta_abs_vs_baseline"],
+        "delta_pct_vs_baseline": seed_result["delta_pct_vs_baseline"],
+        "iterations": seed_result["iterations"],
+        "evaluations": seed_result["evaluations"],
+        "runtime_seconds": seed_result["runtime_seconds"],
+        "accepted_iterations": seed_result["accepted_iterations"],
+        "improvement_iterations": seed_result["improvement_iterations"],
+        "stopping_reason": seed_result["stopping_reason"],
+        "final_perturbation_strength": seed_result["final_perturbation_strength"],
+        "seed_dir": seed_artifact_paths.get("seed_dir"),
+        "profile_total_runtime_s": seed_profile.get("total_runtime_s"),
+        "profile_initial_eval_s": seed_profile.get("initial_eval_s"),
+        "profile_initial_local_search_s": seed_profile.get("initial_local_search_s"),
+        "profile_iteration_perturbation_s": seed_profile.get("iteration_perturbation_s"),
+        "profile_iteration_candidate_eval_s": seed_profile.get("iteration_candidate_eval_s"),
+        "profile_iteration_local_search_s": seed_profile.get("iteration_local_search_s"),
+        "profile_iteration_acceptance_update_s": seed_profile.get("iteration_acceptance_update_s"),
+        "profile_iteration_bookkeeping_s": seed_profile.get("iteration_bookkeeping_s"),
+        "profile_iteration_logging_s": seed_profile.get("iteration_logging_s"),
+        "profile_evaluation_build_final_matrix_s": seed_profile.get("evaluation_build_final_matrix_s"),
+        "profile_evaluation_objective_only_s": seed_profile.get("evaluation_objective_only_s"),
+        "profile_evaluation_total_s": seed_profile.get("evaluation_total_s"),
+        "profile_evaluation_calls": seed_profile.get("evaluation_calls"),
+        "profile_evaluation_avg_s": seed_profile.get("evaluation_avg_s"),
+        "profile_local_search_calls": seed_profile.get("local_search_calls"),
+    }
+
+
+_WORKER_CONTEXT: Optional[MetaheuristicContext] = None
+_WORKER_OBJECTIVE_STATE: Optional[ObjectiveStateND] = None
+_WORKER_SEED_TO_INITIAL_CANDIDATE: Optional[Dict[int, np.ndarray]] = None
+_WORKER_CONFIG: Optional[ILSRuntimeConfig] = None
+
+
+def _initialize_seed_worker(context: MetaheuristicContext,
+                            objective_state: ObjectiveStateND,
+                            seed_to_initial_candidate: Dict[int, np.ndarray],
+                            config: ILSRuntimeConfig) -> None:
+    global _WORKER_CONTEXT
+    global _WORKER_OBJECTIVE_STATE
+    global _WORKER_SEED_TO_INITIAL_CANDIDATE
+    global _WORKER_CONFIG
+    _WORKER_CONTEXT = context
+    _WORKER_OBJECTIVE_STATE = objective_state
+    _WORKER_SEED_TO_INITIAL_CANDIDATE = seed_to_initial_candidate
+    _WORKER_CONFIG = config
+
+
+def _run_single_seed_ils_worker(seed_value: int) -> Dict[str, object]:
+    if (
+        _WORKER_CONTEXT is None
+        or _WORKER_OBJECTIVE_STATE is None
+        or _WORKER_SEED_TO_INITIAL_CANDIDATE is None
+        or _WORKER_CONFIG is None
+    ):
+        raise RuntimeError("ILS seed worker was not initialized.")
+
+    seed_int = int(seed_value)
+    initial_candidate_matrix = _WORKER_SEED_TO_INITIAL_CANDIDATE[seed_int].copy()
+    return _run_single_seed_ils(
+        seed_value=seed_int,
+        context=_WORKER_CONTEXT,
+        objective_state=_WORKER_OBJECTIVE_STATE,
+        initial_candidate_matrix=initial_candidate_matrix,
+        config=_WORKER_CONFIG,
+    )
+
+
 def _run_single_seed_ils(seed_value: int,
                          context: MetaheuristicContext,
                          objective_state: ObjectiveStateND,
@@ -944,6 +1031,7 @@ def run_ils(context: MetaheuristicContext) -> dict:
     perturbation_max_strength = None
     if perturbation_max_strength_raw is not None and str(perturbation_max_strength_raw).strip() != "":
         perturbation_max_strength = int(perturbation_max_strength_raw)
+    seed_parallel_workers = _resolve_seed_parallel_workers(len(context.seeds))
 
     config = ILSRuntimeConfig(
         perturbation_strength=max(1, int(os.getenv("ILS_PERTURBATION_STRENGTH", "10"))),
@@ -961,6 +1049,7 @@ def run_ils(context: MetaheuristicContext) -> dict:
         log_every_iterations=max(1, int(os.getenv("ILS_LOG_EVERY", "10"))),
         log_only_improvements=os.getenv("ILS_LOG_ONLY_IMPROVEMENTS", "0") == "1",
         log_on_acceptance=os.getenv("ILS_LOG_ON_ACCEPTANCE", "0") == "1",
+        seed_parallel_workers=seed_parallel_workers,
     )
     objective_state = context.objective_state_nd
 
@@ -982,26 +1071,44 @@ def run_ils(context: MetaheuristicContext) -> dict:
 
     per_seed_result_records = []
     per_seed_run_summaries = []
-
-    for seed in context.seeds:
-        seed_value = int(seed)
-        initial_candidate_matrix = seed_to_initial_candidate[seed_value].copy()
-
-        debug_files = {}
-        if config.debug_mode:
-            debug_files = save_nd_debug_matrices(
+    seed_values = [int(seed) for seed in context.seeds]
+    debug_files_by_seed: Dict[int, Dict[str, str]] = {}
+    if config.debug_mode:
+        for seed_value in seed_values:
+            debug_files_by_seed[seed_value] = save_nd_debug_matrices(
                 context=context,
                 seed=seed_value,
-                candidate_matrix=initial_candidate_matrix,
+                candidate_matrix=seed_to_initial_candidate[seed_value].copy(),
             )
 
-        seed_result = _run_single_seed_ils(
-            seed_value=seed_value,
-            context=context,
-            objective_state=objective_state,
-            initial_candidate_matrix=initial_candidate_matrix,
-            config=config,
-        )
+    seed_execution_start = perf_counter()
+    if config.seed_parallel_workers > 1:
+        if config.log_enabled:
+            print(
+                f"[ILS] running {len(seed_values)} seeds "
+                f"with {config.seed_parallel_workers} parallel workers"
+            )
+        with ProcessPoolExecutor(
+            max_workers=config.seed_parallel_workers,
+            initializer=_initialize_seed_worker,
+            initargs=(context, objective_state, seed_to_initial_candidate, config),
+        ) as executor:
+            per_seed_result_records = list(executor.map(_run_single_seed_ils_worker, seed_values))
+    else:
+        for seed_value in seed_values:
+            initial_candidate_matrix = seed_to_initial_candidate[seed_value].copy()
+            seed_result = _run_single_seed_ils(
+                seed_value=seed_value,
+                context=context,
+                objective_state=objective_state,
+                initial_candidate_matrix=initial_candidate_matrix,
+                config=config,
+            )
+            per_seed_result_records.append(seed_result)
+    seed_execution_wall_seconds = float(perf_counter() - seed_execution_start)
+
+    for seed_result in per_seed_result_records:
+        seed_value = int(seed_result["seed"])
         seed_artifact_paths = {}
         if config.experiment_mode and experiment_directories is not None:
             seed_artifact_paths = _save_per_seed_artifacts(
@@ -1011,41 +1118,15 @@ def run_ils(context: MetaheuristicContext) -> dict:
                 save_best_matrix_npz=config.save_best_matrix_npz,
             )
         seed_result["artifact_paths"] = seed_artifact_paths
+        debug_files = debug_files_by_seed.get(seed_value, {})
         if debug_files:
             seed_result["debug_files"] = debug_files
-        per_seed_result_records.append(seed_result)
-        seed_profile = seed_result.get("profiling", {})
-
-        per_seed_run_summaries.append({
-            "seed": seed_result["seed"],
-            "initial_objective_value": seed_result["initial_objective_value"],
-            "best_objective_value": seed_result["best_objective_value"],
-            "delta_abs_vs_baseline": seed_result["delta_abs_vs_baseline"],
-            "delta_pct_vs_baseline": seed_result["delta_pct_vs_baseline"],
-            "iterations": seed_result["iterations"],
-            "evaluations": seed_result["evaluations"],
-            "runtime_seconds": seed_result["runtime_seconds"],
-            "accepted_iterations": seed_result["accepted_iterations"],
-            "improvement_iterations": seed_result["improvement_iterations"],
-            "stopping_reason": seed_result["stopping_reason"],
-            "final_perturbation_strength": seed_result["final_perturbation_strength"],
-            "seed_dir": seed_artifact_paths.get("seed_dir"),
-            "profile_total_runtime_s": seed_profile.get("total_runtime_s"),
-            "profile_initial_eval_s": seed_profile.get("initial_eval_s"),
-            "profile_initial_local_search_s": seed_profile.get("initial_local_search_s"),
-            "profile_iteration_perturbation_s": seed_profile.get("iteration_perturbation_s"),
-            "profile_iteration_candidate_eval_s": seed_profile.get("iteration_candidate_eval_s"),
-            "profile_iteration_local_search_s": seed_profile.get("iteration_local_search_s"),
-            "profile_iteration_acceptance_update_s": seed_profile.get("iteration_acceptance_update_s"),
-            "profile_iteration_bookkeeping_s": seed_profile.get("iteration_bookkeeping_s"),
-            "profile_iteration_logging_s": seed_profile.get("iteration_logging_s"),
-            "profile_evaluation_build_final_matrix_s": seed_profile.get("evaluation_build_final_matrix_s"),
-            "profile_evaluation_objective_only_s": seed_profile.get("evaluation_objective_only_s"),
-            "profile_evaluation_total_s": seed_profile.get("evaluation_total_s"),
-            "profile_evaluation_calls": seed_profile.get("evaluation_calls"),
-            "profile_evaluation_avg_s": seed_profile.get("evaluation_avg_s"),
-            "profile_local_search_calls": seed_profile.get("local_search_calls"),
-        })
+        per_seed_run_summaries.append(
+            _build_per_seed_run_summary(
+                seed_result=seed_result,
+                seed_artifact_paths=seed_artifact_paths,
+            )
+        )
 
     global_best_seed_result = max(
         per_seed_result_records,
@@ -1055,9 +1136,11 @@ def run_ils(context: MetaheuristicContext) -> dict:
         sum(float(seed_result["runtime_seconds"]) for seed_result in per_seed_result_records)
     )
     experiment_runtime_seconds = float(perf_counter() - experiment_start_time)
-    orchestration_runtime_seconds = float(experiment_runtime_seconds - seed_runtimes_total_seconds)
+    orchestration_runtime_seconds = float(experiment_runtime_seconds - seed_execution_wall_seconds)
     summary_stats = _compute_summary_statistics(per_seed_run_summaries)
     summary_stats["seed_runtimes_total_seconds"] = seed_runtimes_total_seconds
+    summary_stats["seed_execution_wall_seconds"] = seed_execution_wall_seconds
+    summary_stats["seed_parallel_workers"] = int(config.seed_parallel_workers)
     summary_stats["experiment_runtime_seconds"] = experiment_runtime_seconds
     summary_stats["orchestration_runtime_seconds"] = orchestration_runtime_seconds
 
@@ -1079,6 +1162,8 @@ def run_ils(context: MetaheuristicContext) -> dict:
         "baseline_iqc_total": context.baseline_iqc_total,
         "experiment_runtime_seconds": experiment_runtime_seconds,
         "seed_runtimes_total_seconds": seed_runtimes_total_seconds,
+        "seed_execution_wall_seconds": seed_execution_wall_seconds,
+        "seed_parallel_workers": int(config.seed_parallel_workers),
         "orchestration_runtime_seconds": orchestration_runtime_seconds,
         "global_best_seed": int(global_best_seed_result["seed"]),
         "global_best_objective_value": float(global_best_seed_result["best_objective_value"]),
