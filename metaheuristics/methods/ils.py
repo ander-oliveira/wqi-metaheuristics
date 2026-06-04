@@ -28,7 +28,7 @@ class ILSRuntimeConfig:
     max_no_improve: int = 80
     local_search_neighbor_sample: int = 64
     local_search_max_steps: int = 25
-    perturbation_strength: int = 10
+    perturbation_strength: int = 5
     perturbation_mode: str = "dimension_preserving_block"
     perturbation_block_size: int = 2
     adaptive_perturbation: bool = True
@@ -1034,7 +1034,7 @@ def run_ils(context: MetaheuristicContext) -> dict:
     seed_parallel_workers = _resolve_seed_parallel_workers(len(context.seeds))
 
     config = ILSRuntimeConfig(
-        perturbation_strength=max(1, int(os.getenv("ILS_PERTURBATION_STRENGTH", "10"))),
+        perturbation_strength=max(1, int(os.getenv("ILS_PERTURBATION_STRENGTH", "5"))),
         perturbation_mode=str(perturbation_mode).strip().lower() or "dimension_preserving_block",
         perturbation_block_size=max(1, int(os.getenv("ILS_PERTURBATION_BLOCK_SIZE", "2"))),
         adaptive_perturbation=os.getenv("ILS_ADAPTIVE_PERTURBATION", "1") != "0",
