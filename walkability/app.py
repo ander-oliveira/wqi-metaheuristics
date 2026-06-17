@@ -163,7 +163,11 @@ def _select_profile_for_meta(df_walkability_by_profile: dict) -> Tuple[str, pd.D
 def _run_metaheuristic_stage(df_walkability: pd.DataFrame,
                              df_hex_time_matrix: pd.DataFrame,
                              walking_profile: str,
-                             budget: int) -> Optional[dict]:
+                             budget: int,
+                             location: str = None,
+                             key_location: str = None,
+                             h3_resolution: int = None,
+                             distance: int = None) -> Optional[dict]:
     try:
         method = ask_metaheuristic_method()
         seeds = load_seeds('seeds.txt')
@@ -174,6 +178,10 @@ def _run_metaheuristic_stage(df_walkability: pd.DataFrame,
             method=method,
             seeds=seeds,
             walking_profile=walking_profile,
+            location=location,
+            key_location=key_location,
+            h3_resolution=h3_resolution,
+            distance=distance,
         )
     except Exception as e:
         print(f"Could not initialize metaheuristic stage: {e}")
@@ -266,7 +274,13 @@ def run_cli() -> None:
                 print(f"Skipping location without selected dataset: {location}")
                 continue
 
-            _run_metaheuristic_stage(existing_df, existing_hex_time_matrix, existing_profile, BUDGET)
+            _run_metaheuristic_stage(
+                existing_df, existing_hex_time_matrix, existing_profile, BUDGET,
+                location=location,
+                key_location=key_location,
+                h3_resolution=H3_RESOLUTION,
+                distance=DISTANCE,
+            )
 
         print('Done.')
         return

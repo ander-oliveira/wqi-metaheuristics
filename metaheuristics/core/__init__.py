@@ -22,9 +22,12 @@ from .evaluation import (
     validate_hex_time_matrix,
 )
 from .io import load_seeds
+from .results import OPTIMIZATION_RUNS_ROOT, persist_run
 from .types import MetaheuristicContext, ObjectiveStateND
 
 __all__ = [
+    'OPTIMIZATION_RUNS_ROOT',
+    'persist_run',
     'CORE_INDICATOR_COLUMNS',
     'HEX_TIME_MATRIX_REQUIRED_COLUMNS',
     'ID_COLUMNS',

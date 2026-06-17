@@ -10,6 +10,7 @@ from .core.evaluation import (
     validate_hex_time_matrix,
 )
 from .core.io import load_seeds
+from .core.results import persist_run
 from .core.types import MetaheuristicContext
 from .methods import METHOD_RUNNERS
 
@@ -39,7 +40,11 @@ def walk_meta_opt(df_walkability: pd.DataFrame,
                   budget: int,
                   method: str,
                   seeds: List[int],
-                  walking_profile: str) -> Dict[str, object]:
+                  walking_profile: str,
+                  location: str = None,
+                  key_location: str = None,
+                  h3_resolution: int = None,
+                  distance: int = None) -> Dict[str, object]:
     """
     Prepare the metaheuristic optimization scenario from:
     - df_walkability (base indicators by hexagon)
@@ -114,6 +119,15 @@ def walk_meta_opt(df_walkability: pd.DataFrame,
         'message': 'No method runner is registered for this method.',
     }
 
+    persisted_paths = persist_run(
+        context=context,
+        method_result=method_result,
+        location=location,
+        key_location=key_location,
+        h3_resolution=h3_resolution,
+        distance=distance,
+    )
+
     print("\nMetaheuristic setup initialized.")
     print(f"Method: {METAHEURISTIC_METHODS[method]} ({method})")
     print(f"Profile: {walking_profile}")
@@ -140,4 +154,5 @@ def walk_meta_opt(df_walkability: pd.DataFrame,
         'baseline_iqc_total': context.baseline_iqc_total,
         'allocations': allocations,
         'method_result': method_result,
+        'persisted_files': persisted_paths,
     }

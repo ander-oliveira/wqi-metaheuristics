@@ -1,0 +1,1425 @@
+\documentclass[11pt,a4paper]{article}
+
+% ----------------------------------------------------------------------------
+%  Codificação e idioma
+% ----------------------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{lmodern}
+
+% ----------------------------------------------------------------------------
+%  Layout
+% ----------------------------------------------------------------------------
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{parskip}
+
+% ----------------------------------------------------------------------------
+%  Matemática, tabelas, cores
+% ----------------------------------------------------------------------------
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+
+% ----------------------------------------------------------------------------
+%  Algoritmos e código
+% ----------------------------------------------------------------------------
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{listings}
+
+% ----------------------------------------------------------------------------
+%  Diagramas
+% ----------------------------------------------------------------------------
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds}
+
+% ----------------------------------------------------------------------------
+%  Links (por último)
+% ----------------------------------------------------------------------------
+\usepackage[colorlinks=true,linkcolor=blue!60!black,
+            citecolor=green!50!black,urlcolor=blue!60!black]{hyperref}
+
+% ----------------------------------------------------------------------------
+%  Cores e estilo de código
+% ----------------------------------------------------------------------------
+\definecolor{cellchg}{RGB}{198,239,206}   % célula alterada (verde)
+\definecolor{cellrcl}{RGB}{197,217,241}   % elemento na RCL (azul)
+\definecolor{cellsel}{RGB}{252,213,180}   % elemento escolhido (laranja)
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codekw}{RGB}{0,0,180}
+\definecolor{codecm}{RGB}{0,128,0}
+\definecolor{codestr}{RGB}{170,55,55}
+
+\lstdefinestyle{py}{
+  language=Python,
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{codekw}\bfseries,
+  commentstyle=\color{codecm}\itshape,
+  stringstyle=\color{codestr},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{gray!40},
+  tabsize=4,
+  captionpos=b,
+  keepspaces=true,
+}
+
+% Comando auxiliar: rótulo de hexágono
+\newcommand{\hex}[1]{\textsf{#1}}
+
+% ----------------------------------------------------------------------------
+%  Capa
+% ----------------------------------------------------------------------------
+\title{\textbf{Implementação do GRASP para Otimização do Índice de\\
+Qualidade de Caminhabilidade (IQC)}\\[4pt]
+\large Relatório técnico detalhado: teoria e implementação passo a passo}
+\author{Anderson Oliveira}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Este relatório documenta a implementação do \emph{Greedy Randomized Adaptive
+Search Procedure} (GRASP), na sua forma clássica de duas fases descrita por
+Resende e Ribeiro, aplicado ao problema de alocação de Pontos de Interesse
+(POIs) que maximiza o Índice de Qualidade de Caminhabilidade (IQC) total de uma
+malha de hexágonos H3. A primeira parte apresenta a teoria do GRASP utilizada
+(multi-start, construção gulosa-aleatória com Lista Restrita de Candidatos e
+busca local). A segunda parte descreve, função a função, como o método foi
+implementado, incluindo as estruturas de dados em \texttt{ndarray}, a função
+objetivo (pesos CRITIC + IQC) e as decisões de projeto. Por fim, uma instância
+didática é executada e \emph{ilustrada passo a passo}, mostrando como a matriz de
+alocação evolui, como o impacto se propaga entre hexágonos e como o IQC é
+recalculado a cada iteração.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Introdução e contexto}
+% ============================================================================
+
+O projeto calcula, para cada hexágono H3 de uma localidade, um conjunto de
+indicadores de caminhabilidade (saúde, educação, transporte, segurança, etc.) e
+deles deriva o \textbf{IQC} (Índice de Qualidade de Caminhabilidade) via pesos
+\textbf{CRITIC}. A etapa de otimização busca responder a uma pergunta de
+planejamento urbano:
+
+\begin{quote}
+\itshape
+Dado um orçamento de $B$ novos POIs, em quais hexágonos e de quais dimensões
+devemos inseri-los para maximizar o IQC \emph{total} da região?
+\end{quote}
+
+Trata-se de um problema combinatório: o número de maneiras de distribuir $B$
+POIs entre os pares (hexágono-fonte, dimensão) cresce explosivamente. Métodos
+exatos são inviáveis para instâncias reais, o que motiva o uso de uma
+\textbf{meta-heurística}. Escolhemos o GRASP por três razões alinhadas ao texto
+de Resende e Ribeiro: (i) requer poucos parâmetros (essencialmente o parâmetro
+$\alpha$ da lista de candidatos); (ii) tem estrutura simples de implementar sobre
+blocos já disponíveis (uma função de construção e uma de busca local); e (iii)
+é naturalmente multi-start, o que o torna robusto à aleatoriedade das sementes.
+
+% ============================================================================
+\section{Formalização do problema}
+\label{sec:problema}
+% ============================================================================
+
+\subsection{Conjunto base e variável de decisão}
+
+Seja $H=\{h_1,\dots,h_n\}$ o conjunto dos $n$ hexágonos e
+$D=\{d_1,\dots,d_m\}$ o conjunto das $m$ dimensões de POI alocáveis (saúde,
+transporte, etc.). O \textbf{conjunto base} (\emph{ground set}) do GRASP é
+
+\begin{equation}
+E \;=\; H_{\text{fonte}} \times D,
+\end{equation}
+
+\noindent
+onde $H_{\text{fonte}}\subseteq H$ são os hexágonos elegíveis para receber POIs.
+Cada \emph{elemento} $e=(h,d)\in E$ representa ``inserir uma unidade de POI da
+dimensão $d$ no hexágono-fonte $h$''.
+
+A solução é uma \textbf{matriz de alocação} (chamada no código de
+\texttt{candidate\_matrix})
+\begin{equation}
+X \in \mathbb{Z}_{\ge 0}^{\,n \times m},
+\qquad
+X_{h,d} = \text{número de POIs da dimensão } d \text{ alocados no hexágono } h .
+\end{equation}
+
+\subsection{Restrição de viabilidade}
+
+A única restrição é o orçamento total:
+\begin{equation}
+\sum_{h=1}^{n}\sum_{d=1}^{m} X_{h,d} \;=\; B .
+\label{eq:budget}
+\end{equation}
+Como a construção do GRASP insere exatamente um POI por passo e para em $B$
+passos, e a busca local apenas \emph{move} POIs (preservando a soma), a
+restrição~\eqref{eq:budget} é satisfeita por construção --- nenhum procedimento
+de reparo é necessário.
+
+\subsection{Propagação espaço-temporal do impacto}
+
+Inserir um POI num hexágono-fonte $s$ não beneficia apenas $s$: o efeito
+se \emph{propaga} aos hexágonos-alvo $t$ alcançáveis a pé, ponderado por um fator
+de decaimento temporal $\alpha_{s,t}\in(0,1]$ (cosseno do tempo de caminhada,
+campo \texttt{alpha\_20}). Seja $P$ o conjunto de pares fonte--alvo com
+$\alpha_{s,t}>0$. A matriz final de indicadores é
+\begin{equation}
+M \;=\; M^{0} + \Delta,
+\qquad
+\Delta_{t,\,j(d)} \;=\; \sum_{(s,t)\in P} \alpha_{s,t}\, X_{s,d},
+\label{eq:propagacao}
+\end{equation}
+onde $M^{0}$ é a matriz \emph{baseline} de indicadores ($n\times 11$),
+$j(d)$ é a coluna do indicador correspondente à dimensão $d$, e a soma
+acumula a contribuição de todos os POIs que, a partir de suas fontes, alcançam
+o alvo $t$.
+
+\subsection{Função objetivo: CRITIC + IQC}
+
+Dada a matriz final $M$, a função objetivo executa três etapas
+(implementadas em \texttt{objective\_function}):
+
+\paragraph{(1) Pesos CRITIC.} Normaliza-se cada coluna por \emph{min--max},
+\begin{equation}
+\hat{M}_{ij} = \frac{M_{ij}-\min_i M_{ij}}{\max_i M_{ij}-\min_i M_{ij}},
+\end{equation}
+calcula-se o desvio-padrão $\sigma_j$ de cada coluna normalizada e o
+\emph{conflito} $c_j=\sum_k\bigl(1-|\rho_{jk}|\bigr)$, onde $\rho_{jk}$ é a
+correlação de Pearson entre os indicadores $j$ e $k$. O peso de cada indicador é
+\begin{equation}
+w_j \;=\; \frac{\sigma_j\, c_j}{\sum_{l}\sigma_l\, c_l}.
+\label{eq:critic}
+\end{equation}
+
+\paragraph{(2) IQC por hexágono.} É a média ponderada dos indicadores
+normalizados:
+\begin{equation}
+\mathrm{IQC}_i \;=\; \sum_{j} w_j\, \hat{M}_{ij}.
+\label{eq:iqc}
+\end{equation}
+
+\paragraph{(3) Objetivo global.} Soma do IQC sobre todos os hexágonos, a ser
+\textbf{maximizada}:
+\begin{equation}
+\boxed{\;f(X) \;=\; \sum_{i=1}^{n}\mathrm{IQC}_i\;}
+\qquad\text{(direção: maximizar).}
+\label{eq:objetivo}
+\end{equation}
+
+\begin{quote}\small
+\textbf{Observação crucial.} Os pesos CRITIC~\eqref{eq:critic} e a
+normalização~\eqref{eq:iqc} dependem de \emph{todas} as colunas e linhas de $M$.
+Logo, $f$ é \textbf{não-separável}: o ganho de inserir um POI não é constante ---
+muda conforme a solução parcial atual. Isso encaixa exatamente no caráter
+\emph{adaptativo} do GRASP (a função gulosa é reavaliada a cada passo), mas torna
+cada avaliação cara, o que orienta as decisões de eficiência da
+Seção~\ref{sec:impl}.
+\end{quote}
+
+% ============================================================================
+\section{Teoria do GRASP utilizada}
+\label{sec:teoria}
+% ============================================================================
+
+O GRASP (Feo e Resende, 1995; Resende e Ribeiro, 2016, 2019) é uma
+meta-heurística \emph{multi-start}: cada iteração é independente e consiste em
+duas fases --- \textbf{construção} gulosa-aleatória e \textbf{busca local} --- e a
+melhor solução global é mantida ao final.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+  node distance=8mm and 14mm,
+  box/.style={rectangle,rounded corners,draw=black!60,fill=blue!8,
+              minimum width=3.2cm,minimum height=1cm,align=center},
+  arr/.style={-{Stealth[length=2.5mm]},thick}]
+  \node[box] (seed) {Para cada\\semente $\sigma$};
+  \node[box,right=of seed,fill=green!10] (cons) {Construção\\gulosa-aleatória\\(RCL, $\alpha$)};
+  \node[box,right=of cons,fill=orange!12] (ls) {Busca local\\(first-improving)};
+  \node[box,right=of ls,fill=red!8] (upd) {Atualiza\\melhor solução $S^\star$};
+  \draw[arr] (seed) -- (cons);
+  \draw[arr] (cons) -- node[above,font=\scriptsize]{$S$} (ls);
+  \draw[arr] (ls) -- node[above,font=\scriptsize]{$S$ ótimo local} (upd);
+  \draw[arr] (upd.south) .. controls +(0,-1.1) and +(0,-1.1) .. (seed.south)
+        node[midway,below,font=\scriptsize]{próxima semente (multi-start)};
+\end{tikzpicture}
+\caption{Estrutura geral do GRASP: laço multi-start sobre as sementes;
+cada iteração constrói uma solução, refina-a por busca local e atualiza a melhor
+solução encontrada.}
+\label{fig:grasp-flow}
+\end{figure}
+
+\subsection{Visão geral (multi-start)}
+
+O Algoritmo~\ref{alg:grasp} resume o laço principal, adaptado para
+\textbf{maximização} (o texto original trata minimização). \texttt{Max\_Iterations}
+corresponde, na nossa implementação, ao número de sementes disponíveis.
+
+\begin{algorithm}[ht]
+\caption{GRASP (versão de maximização)}
+\label{alg:grasp}
+\begin{algorithmic}[1]
+\State $f^\star \gets -\infty$;\quad $S^\star \gets \varnothing$
+\ForAll{semente $\sigma$ em \textit{seeds}}
+  \State $S \gets \textsc{ConstrucaoGulosaAleatoria}(\alpha,\sigma)$
+  \State $S \gets \textsc{BuscaLocal}(S)$
+  \If{$f(S) > f^\star$}
+    \State $S^\star \gets S$;\quad $f^\star \gets f(S)$
+  \EndIf
+\EndFor
+\State \Return $S^\star$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Fase de construção e a Lista Restrita de Candidatos (RCL)}
+
+A construção monta a solução \emph{um elemento por vez}. A cada passo
+avalia-se, para cada elemento candidato $e$, o \textbf{ganho incremental}
+$g(e)$ que sua inserção provoca na função objetivo. Constrói-se então a
+\textbf{Lista Restrita de Candidatos} (RCL) com os \emph{melhores} elementos e
+sorteia-se um deles ao acaso. Três aspectos coexistem:
+
+\begin{itemize}
+\item \textbf{Guloso} --- só entram na RCL os elementos de maior ganho;
+\item \textbf{Probabilístico} --- escolhe-se aleatoriamente \emph{dentro} da RCL;
+\item \textbf{Adaptativo} --- após cada inserção os ganhos são reavaliados.
+\end{itemize}
+
+A RCL é controlada pelo limiar $\alpha\in[0,1]$. Para \textbf{maximização}, sendo
+$g_{\max}$ e $g_{\min}$ o maior e o menor ganho dos candidatos, a lista é
+\begin{equation}
+\mathrm{RCL} \;=\;\Bigl\{\, e : g(e) \;\ge\; g_{\max} - \alpha\,(g_{\max}-g_{\min}) \,\Bigr\}.
+\label{eq:rcl}
+\end{equation}
+Os extremos têm interpretação direta: $\alpha=0$ produz um algoritmo
+\emph{puramente guloso} (só o melhor elemento entra na RCL), enquanto $\alpha=1$
+produz uma \emph{construção aleatória} (todos entram). Resende e Ribeiro mostram
+empiricamente que valores intermediários ($\alpha\approx 0{,}2$) oferecem o melhor
+compromisso entre média e variância das soluções; adotamos esse valor.
+
+\begin{algorithm}[ht]
+\caption{Construção gulosa-aleatória (maximização, \emph{sampled greedy})}
+\label{alg:cons}
+\begin{algorithmic}[1]
+\State $S \gets$ matriz nula $n\times m$;\quad $v \gets f(S)$
+\For{$k = 1,\dots,B$}
+  \State $\mathcal{C} \gets$ amostra aleatória de $p$ pares $(h,d)$ do conjunto base $E$
+  \ForAll{$(h,d) \in \mathcal{C}$}
+    \State $g(h,d) \gets f\bigl(S \text{ com } X_{h,d}{+}1\bigr) - v$ \Comment{ganho incremental}
+  \EndFor
+  \State $g_{\max}\gets \max g$;\quad $g_{\min}\gets \min g$
+  \State $\mathrm{RCL}\gets\{(h,d)\in\mathcal{C}: g(h,d)\ge g_{\max}-\alpha(g_{\max}-g_{\min})\}$
+  \State sorteie $(h^\star,d^\star)$ uniformemente da $\mathrm{RCL}$
+  \State $X_{h^\star,d^\star}\mathrel{+}=1$;\quad $v \gets v + g(h^\star,d^\star)$
+\EndFor
+\State \Return $S$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Fase de busca local}
+
+A solução construída raramente é ótima localmente. A busca local substitui
+iterativamente a solução corrente por um vizinho melhor, parando no primeiro
+ótimo local. Como o orçamento é fixo, a vizinhança natural é o \textbf{movimento de
+um POI}: retirar uma unidade de um par $(h,d)$ ocupado e inseri-la em outro par
+$(h',d')$. Usa-se a estratégia \emph{first-improving} (aceita a primeira melhoria
+encontrada), recomendada por Resende e Ribeiro por ser mais rápida e menos sujeita
+à convergência prematura que a \emph{best-improving}.
+
+\begin{algorithm}[ht]
+\caption{Busca local \emph{first-improving} (movimento de 1 POI)}
+\label{alg:ls}
+\begin{algorithmic}[1]
+\State $v \gets f(S)$
+\Repeat
+  \State \textit{melhorou} $\gets$ \textbf{falso}
+  \ForAll{$(h,d)$ com $X_{h,d}>0$ (ordem aleatória)}
+    \ForAll{$(h',d') \neq (h,d)$ (ordem aleatória)}
+      \State $S' \gets S$ movendo 1 POI de $(h,d)$ para $(h',d')$
+      \If{$f(S') > v + \epsilon$}
+        \State $S \gets S'$;\ $v \gets f(S')$;\ \textit{melhorou} $\gets$ \textbf{verdadeiro};\ \textbf{break}
+      \EndIf
+    \EndFor
+    \If{\textit{melhorou}} \textbf{break} \EndIf
+  \EndFor
+\Until{$\neg$\,\textit{melhorou} \textbf{ou} orçamento de avaliações esgotado}
+\State \Return $S$
+\end{algorithmic}
+\end{algorithm}
+
+% ============================================================================
+\section{Implementação}
+\label{sec:impl}
+% ============================================================================
+
+A implementação reside em \texttt{metaheuristics/methods/grasp.py} e expõe a
+função \texttt{run\_grasp(context)}, despachada automaticamente pelo otimizador
+quando o usuário escolhe a opção \textbf{B}. Esta seção descreve cada parte.
+
+\subsection{Onde o método se encaixa}
+
+O orquestrador \texttt{walk\_meta\_opt} prepara um objeto \texttt{context}
+(pacote de dados) e o entrega ao \emph{runner} do método. Os campos relevantes
+para o GRASP são:
+\begin{itemize}\setlength\itemsep{1pt}
+\item \texttt{context.objective\_state\_nd} --- estado numérico pré-compilado
+(matriz baseline, índices fonte/alvo, valores $\alpha$, mapeamentos);
+\item \texttt{context.budget} --- orçamento $B$ de POIs;
+\item \texttt{context.seeds} --- lista de sementes (define o multi-start);
+\item \texttt{context.source\_hex\_ids} e \texttt{context.dimensions} --- formam o
+conjunto base $E$.
+\end{itemize}
+
+\subsection{Representação numérica e propagação}
+
+Toda a avaliação opera em \texttt{ndarray}, sem \texttt{pandas} no laço quente.
+A solução é a \texttt{candidate\_matrix} $X$ de forma $(n,m)$; o estado
+pré-compilado \texttt{objective\_state\_nd} guarda \texttt{baseline\_matrix}
+($M^0$), os arrays \texttt{source\_indices}, \texttt{target\_indices},
+\texttt{alpha\_values} (que representam o conjunto $P$ e os $\alpha_{s,t}$) e o
+mapa \texttt{candidate\_to\_indicator\_indices} (que liga cada coluna de $X$ à
+coluna correspondente em $M$). A propagação~\eqref{eq:propagacao} é uma
+soma dispersa (\emph{scatter-add}) vetorizada.
+
+\subsection{Função de avaliação \texttt{\_evaluate}}
+
+Encapsula a Eq.~\eqref{eq:propagacao} seguida da
+Eq.~\eqref{eq:objetivo}: dada $X$, propaga o impacto e devolve $\sum_i\mathrm{IQC}_i$.
+
+\begin{lstlisting}[style=py,caption={Avaliação de um candidato: propaga o impacto e retorna a soma do IQC.}]
+def _evaluate(candidate_matrix, objective_state):
+    """Score a candidate matrix: propagate impacts then return sum(IQC)."""
+    final_indicator_matrix = build_final_indicator_matrix_nd(
+        candidate_matrix=candidate_matrix,
+        objective_state=objective_state,
+    )
+    return objective_function(final_indicator_matrix=final_indicator_matrix)['objective_value']
+\end{lstlisting}
+
+\subsection{Fase de construção \texttt{\_greedy\_randomized\_construction}}
+
+Implementa o Algoritmo~\ref{alg:cons}. Pontos a destacar:
+\begin{itemize}\setlength\itemsep{1pt}
+\item começa de $X=\mathbf{0}$ e insere 1 POI por passo, até $B$;
+\item por passo, amostra \texttt{sample\_size} pares (\emph{sampled greedy}) e mede
+o ganho de cada um chamando \texttt{\_evaluate} com o POI somado e depois revertido;
+\item monta a RCL pela Eq.~\eqref{eq:rcl} e sorteia um índice dela;
+\item a atualização \texttt{current\_value += gains[chosen]} é \emph{exata}, pois
+\texttt{gains[chosen]} já é a diferença entre o valor avaliado e o valor corrente.
+\end{itemize}
+
+\begin{lstlisting}[style=py,caption={Construção gulosa-aleatória com RCL amostrada.}]
+def _greedy_randomized_construction(objective_state, elements, budget,
+                                    alpha, sample_size, rng):
+    n_hex = len(objective_state.h3_ids)
+    n_dims = len(objective_state.candidate_dimensions)
+    candidate = np.zeros((n_hex, n_dims), dtype=np.float64)
+    current_value = _evaluate(candidate, objective_state)
+
+    for _ in range(budget):
+        if sample_size < len(elements):
+            sampled = rng.sample(elements, sample_size)
+        else:
+            sampled = list(elements)
+
+        gains = np.empty(len(sampled), dtype=np.float64)
+        for i, (row, col) in enumerate(sampled):
+            candidate[row, col] += 1.0
+            gains[i] = _evaluate(candidate, objective_state) - current_value
+            candidate[row, col] -= 1.0
+
+        g_max = float(gains.max())
+        g_min = float(gains.min())
+        threshold = g_max - alpha * (g_max - g_min)        # RCL de maximizacao
+        rcl = [i for i in range(len(sampled)) if gains[i] >= threshold]
+
+        chosen = rng.choice(rcl)
+        row, col = sampled[chosen]
+        candidate[row, col] += 1.0
+        current_value += float(gains[chosen])
+
+    return candidate, current_value
+\end{lstlisting}
+
+\subsection{Fase de busca local \texttt{\_local\_search}}
+
+Implementa o Algoritmo~\ref{alg:ls} com \emph{first-improving}. A vizinhança é o
+movimento de 1 POI; a varredura é aleatorizada (ordem dos pares ocupados e dos
+destinos) e limitada por um orçamento de avaliações \texttt{max\_evals}, que
+garante tempo de execução previsível mesmo quando a função objetivo é cara.
+
+\begin{lstlisting}[style=py,caption={Busca local first-improving por movimento de POI.}]
+def _local_search(candidate, objective_state, elements, rng, max_evals):
+    current_value = _evaluate(candidate, objective_state)
+    evals = 0
+    improved = True
+
+    while improved and evals < max_evals:
+        improved = False
+        occupied = [(int(r), int(c)) for r, c in zip(*np.nonzero(candidate))]
+        rng.shuffle(occupied)
+
+        for (row, col) in occupied:
+            destinations = list(elements)
+            rng.shuffle(destinations)
+
+            for (row2, col2) in destinations:
+                if row2 == row and col2 == col:
+                    continue
+                if evals >= max_evals:
+                    break
+                candidate[row, col] -= 1.0
+                candidate[row2, col2] += 1.0
+                value = _evaluate(candidate, objective_state)
+                evals += 1
+                if value > current_value + IMPROVEMENT_EPS:
+                    current_value = value
+                    improved = True
+                    break                       # first-improving: aceita e reinicia
+                candidate[row, col] += 1.0       # reverte
+                candidate[row2, col2] -= 1.0
+
+            if improved or evals >= max_evals:
+                break
+
+    return candidate, current_value
+\end{lstlisting}
+
+\subsection{Multi-start e retorno \texttt{run\_grasp}}
+
+O laço principal (Algoritmo~\ref{alg:grasp}) percorre as sementes, executa
+construção + busca local por semente e guarda a melhor solução. Antes do laço,
+calcula o objetivo \emph{baseline} (matriz $X=\mathbf 0$) para medir o ganho.
+O conjunto base é restrito aos hexágonos-fonte que de fato propagam impacto
+(\texttt{np.unique(source\_indices)}), evitando avaliar pares inócuos.
+
+\begin{lstlisting}[style=py,caption={Laço multi-start e montagem do resultado (trecho central).}]
+elements = [(int(row), col) for row in source_row_indices for col in range(n_dims)]
+seeds = context.seeds if context.seeds else [0]
+baseline_value = _evaluate(np.zeros((len(objective_state.h3_ids), n_dims)), objective_state)
+
+best_value, best_candidate, best_seed = float('-inf'), None, None
+for seed in seeds:
+    rng = random.Random(int(seed))
+    candidate, _ = _greedy_randomized_construction(
+        objective_state, elements, context.budget, RCL_ALPHA,
+        CONSTRUCTION_SAMPLE_SIZE, rng)
+    candidate, value = _local_search(
+        candidate, objective_state, elements, rng, LOCAL_SEARCH_MAX_EVALS)
+    if value > best_value:
+        best_value, best_candidate, best_seed = value, candidate.copy(), int(seed)
+\end{lstlisting}
+
+O dicionário de retorno traz \texttt{best\_objective\_value} e um
+\texttt{best\_solution\_summary} com a semente vencedora, o \texttt{baseline\_objective},
+o \texttt{improvement} e a \texttt{allocation} final --- a lista de itens
+$\{$\texttt{h3\_id}, \texttt{dimension}, \texttt{quantity}$\}$ obtida convertendo a
+matriz $X$ de volta para forma legível (\texttt{\_candidate\_matrix\_to\_items}).
+
+\subsection{Paralelismo e cache}
+\label{sec:paralelismo}
+
+O laço multi-start é \emph{embaraçosamente paralelo}: cada semente executa uma
+construção e uma busca local independentes, sem estado compartilhado. Por isso
+despachamos \textbf{uma semente por processo}, distribuídas em
+$\max(\text{núcleos}-1,\,1)$ \emph{workers} (via \texttt{ProcessPoolExecutor}).
+Essa é a estratégia de paralelização independente do GRASP, que Resende e Ribeiro
+reportam levar a \emph{speedups} próximos do linear.
+
+Três cuidados garantem corretude e robustez:
+\begin{itemize}\setlength\itemsep{1pt}
+\item \textbf{Determinismo.} Cada semente possui o seu próprio gerador
+\texttt{random.Random(seed)}, de modo que o resultado independe do número de
+\emph{workers} e da ordem de conclusão. Os resultados são reordenados por semente
+antes de montar as estatísticas, então os arquivos de saída são idênticos em
+execução serial ou paralela (verificado por testes de igualdade
+serial~$=$~paralelo).
+\item \textbf{Sem \emph{oversubscription}.} Como cada \emph{worker} já é um
+processo, fixamos o BLAS do \texttt{numpy} em uma \emph{thread} por \emph{worker}
+(variáveis \texttt{OMP\_NUM\_THREADS} etc.), evitando contenção de CPU.
+\item \textbf{Tolerância a falhas.} Se o ambiente não permitir a criação de
+processos, o método captura a exceção e executa \emph{serialmente}, sem
+interromper a otimização.
+\end{itemize}
+
+Adicionalmente, cada \emph{worker} mantém um \textbf{cache} em memória (por semente)
+que memoiza a avaliação pela \emph{conteúdo} da matriz candidata
+(\texttt{candidate.tobytes()}), evitando recomputar matrizes idênticas. Como a
+função objetivo é não-separável (CRITIC global), matrizes candidatas raramente se
+repetem dentro da construção; o cache, portanto, ajuda sobretudo na busca local e
+\emph{nunca} prejudica (apenas memoiza), tendo um teto de tamanho para não esgotar
+a memória. O ganho de desempenho principal vem do paralelismo.
+
+\subsection{Parâmetros e decisões de projeto}
+
+As escolhas adotadas e seus controles (constantes no topo do módulo) estão na
+Tabela~\ref{tab:params}. As três primeiras refletem as decisões feitas: $\alpha$
+fixo, busca local \emph{first-improving} e \emph{sampled greedy}. Os dois freios de
+custo (\texttt{CONSTRUCTION\_SAMPLE\_SIZE} e \texttt{LOCAL\_SEARCH\_MAX\_EVALS})
+existem porque a função objetivo recalcula o CRITIC globalmente a cada avaliação;
+as quatro últimas controlam o paralelismo e o cache (Seção~\ref{sec:paralelismo}).
+
+\begin{table}[ht]
+\centering
+\caption{Parâmetros da implementação.}
+\label{tab:params}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Constante} & \textbf{Valor} & \textbf{Papel} \\
+\midrule
+\texttt{RCL\_ALPHA}              & $0{,}2$ & limiar da RCL (Eq.~\ref{eq:rcl}) \\
+\texttt{CONSTRUCTION\_SAMPLE\_SIZE} & $64$ & pares avaliados por passo (\emph{sampled greedy}) \\
+\texttt{LOCAL\_SEARCH\_MAX\_EVALS}  & $4000$ & teto de avaliações da busca local por semente \\
+\texttt{IMPROVEMENT\_EPS}        & $10^{-9}$ & ganho mínimo para aceitar melhoria \\
+\texttt{GRASP\_PARALLEL}         & \texttt{True} & liga o multi-start paralelo \\
+\texttt{GRASP\_MAX\_WORKERS}     & \texttt{None} & \texttt{None}~$=$~núcleos$-1$; ou inteiro fixo \\
+\texttt{GRASP\_EVAL\_CACHE}      & \texttt{True} & memoização da avaliação por \emph{worker} \\
+\texttt{GRASP\_EVAL\_CACHE\_MAXSIZE} & $5\times10^{5}$ & teto de entradas do cache por semente \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+\section{Execução ilustrada passo a passo}
+\label{sec:exemplo}
+% ============================================================================
+
+Para tornar a mecânica concreta, executamos o GRASP numa \textbf{instância
+didática} reduzida (números reais produzidos pelo próprio código). Para facilitar
+a visualização usamos $3$ indicadores e $2$ dimensões alocáveis; a implementação
+real usa $11$ indicadores e $7$ dimensões, mas a lógica é idêntica.
+
+\subsection{Instância}
+
+\textbf{Hexágonos:} $\hex{A},\hex{B},\hex{C},\hex{D}$. \quad
+\textbf{Indicadores:} \texttt{S\_saude}, \texttt{T\_transporte}, \texttt{I\_seguranca}.\\
+\textbf{Dimensões alocáveis:} \texttt{S\_saude} (coluna 0) e
+\texttt{T\_transporte} (coluna 1). \quad \textbf{Orçamento:} $B=3$.\\
+\textbf{Propagação:} cada fonte $s$ impacta a si mesma ($\alpha=1{,}0$) e o
+vizinho seguinte ($\alpha=0{,}5$), no ciclo
+$\hex{A}\!\to\!\hex{B}\!\to\!\hex{C}\!\to\!\hex{D}\!\to\!\hex{A}$.
+
+\begin{table}[ht]
+\centering
+\caption{Matriz \emph{baseline} de indicadores $M^0$. Objetivo baseline
+$f(\mathbf 0)=1{,}8389$.}
+\label{tab:baseline}
+\begin{tabular}{@{}c ccc@{}}
+\toprule
+Hex & \texttt{S\_saude} & \texttt{T\_transporte} & \texttt{I\_seguranca} \\
+\midrule
+\hex{A} & 2 & 5 & 3 \\
+\hex{B} & 4 & 1 & 6 \\
+\hex{C} & 1 & 3 & 2 \\
+\hex{D} & 5 & 2 & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Construção --- passo a passo}
+
+A cada passo mostramos o ganho de \emph{todos} os 8 elementos (aqui
+\texttt{sample\_size} cobre o conjunto base inteiro, então não há amostragem),
+a RCL (\colorbox{cellrcl}{azul}) e o elemento sorteado
+(\colorbox{cellsel}{laranja}). À direita, a matriz de alocação $X$ resultante,
+com a célula alterada em \colorbox{cellchg}{verde}.
+
+% -------------------- PASSO 1 --------------------
+\paragraph{Passo 1.}
+$g_{\max}=0{,}1400$,\ $g_{\min}=-0{,}1572$,\ limiar
+$=0{,}1400-0{,}2\cdot(0{,}1400+0{,}1572)=0{,}0806$.
+
+\begin{minipage}[t]{0.55\textwidth}
+\centering
+\small
+\begin{tabular}{@{}lc@{}}
+\toprule
+Elemento $(h,d)$ & ganho $g$ \\
+\midrule
+\rowcolor{cellsel}(\hex{A},\,\texttt{S\_saude})      & $+0{,}1400$ \\
+(\hex{A},\,\texttt{T\_transporte})                   & $-0{,}1297$ \\
+(\hex{B},\,\texttt{S\_saude})                        & $+0{,}0378$ \\
+(\hex{B},\,\texttt{T\_transporte})                   & $-0{,}1061$ \\
+(\hex{C},\,\texttt{S\_saude})                        & $-0{,}1572$ \\
+\rowcolor{cellrcl}(\hex{C},\,\texttt{T\_transporte}) & $+0{,}1287$ \\
+(\hex{D},\,\texttt{S\_saude})                        & $-0{,}0325$ \\
+(\hex{D},\,\texttt{T\_transporte})                   & $+0{,}0569$ \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.40\textwidth}
+\centering
+\small
+\vspace{2pt}
+$X$ após o passo 1:\\[4pt]
+\begin{tabular}{@{}c cc@{}}
+\toprule
+ & \texttt{S\_saude} & \texttt{T\_transp.} \\
+\midrule
+\hex{A} & \cellcolor{cellchg}1 & 0 \\
+\hex{B} & 0 & 0 \\
+\hex{C} & 0 & 0 \\
+\hex{D} & 0 & 0 \\
+\bottomrule
+\end{tabular}\\[4pt]
+$f = 1{,}9789$
+\end{minipage}
+
+\medskip
+A RCL contém os dois elementos acima do limiar; o sorteio escolheu
+(\hex{A},\,\texttt{S\_saude}).
+
+% -------------------- PASSO 2 --------------------
+\paragraph{Passo 2.}
+$g_{\max}=0{,}1714$,\ $g_{\min}=-0{,}1531$,\ limiar $=0{,}1065$.
+Note como os ganhos \emph{mudaram} em relação ao passo 1 --- é o caráter
+adaptativo: a solução parcial alterou o CRITIC e a normalização.
+
+\begin{minipage}[t]{0.55\textwidth}
+\centering
+\small
+\begin{tabular}{@{}lc@{}}
+\toprule
+Elemento $(h,d)$ & ganho $g$ \\
+\midrule
+\rowcolor{cellsel}(\hex{A},\,\texttt{S\_saude})      & $+0{,}1714$ \\
+(\hex{A},\,\texttt{T\_transporte})                   & $-0{,}1531$ \\
+(\hex{B},\,\texttt{S\_saude})                        & $-0{,}0723$ \\
+(\hex{B},\,\texttt{T\_transporte})                   & $-0{,}1355$ \\
+(\hex{C},\,\texttt{S\_saude})                        & $-0{,}1385$ \\
+\rowcolor{cellrcl}(\hex{C},\,\texttt{T\_transporte}) & $+0{,}1626$ \\
+(\hex{D},\,\texttt{S\_saude})                        & $-0{,}0583$ \\
+(\hex{D},\,\texttt{T\_transporte})                   & $+0{,}0661$ \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.40\textwidth}
+\centering
+\small
+\vspace{2pt}
+$X$ após o passo 2:\\[4pt]
+\begin{tabular}{@{}c cc@{}}
+\toprule
+ & \texttt{S\_saude} & \texttt{T\_transp.} \\
+\midrule
+\hex{A} & \cellcolor{cellchg}2 & 0 \\
+\hex{B} & 0 & 0 \\
+\hex{C} & 0 & 0 \\
+\hex{D} & 0 & 0 \\
+\bottomrule
+\end{tabular}\\[4pt]
+$f = 2{,}1503$
+\end{minipage}
+
+\medskip
+Sorteio escolheu novamente (\hex{A},\,\texttt{S\_saude}): agora $X_{\hex{A},\,\texttt{S\_saude}}=2$.
+
+% -------------------- PASSO 3 --------------------
+\paragraph{Passo 3.}
+$g_{\max}=0{,}1786$,\ $g_{\min}=-0{,}2037$,\ limiar $=0{,}1021$.
+O ganho de mais um POI de saúde em \hex{A} caiu para $+0{,}0269$ (rendimentos
+decrescentes), e agora só (\hex{C},\,\texttt{T\_transporte}) supera o limiar.
+
+\begin{minipage}[t]{0.55\textwidth}
+\centering
+\small
+\begin{tabular}{@{}lc@{}}
+\toprule
+Elemento $(h,d)$ & ganho $g$ \\
+\midrule
+(\hex{A},\,\texttt{S\_saude})                        & $+0{,}0269$ \\
+(\hex{A},\,\texttt{T\_transporte})                   & $-0{,}1654$ \\
+(\hex{B},\,\texttt{S\_saude})                        & $-0{,}2037$ \\
+(\hex{B},\,\texttt{T\_transporte})                   & $-0{,}1495$ \\
+(\hex{C},\,\texttt{S\_saude})                        & $-0{,}1446$ \\
+\rowcolor{cellsel}(\hex{C},\,\texttt{T\_transporte}) & $+0{,}1786$ \\
+(\hex{D},\,\texttt{S\_saude})                        & $-0{,}1017$ \\
+(\hex{D},\,\texttt{T\_transporte})                   & $+0{,}0658$ \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.40\textwidth}
+\centering
+\small
+\vspace{2pt}
+$X$ após o passo 3 (final):\\[4pt]
+\begin{tabular}{@{}c cc@{}}
+\toprule
+ & \texttt{S\_saude} & \texttt{T\_transp.} \\
+\midrule
+\hex{A} & 2 & 0 \\
+\hex{B} & 0 & 0 \\
+\hex{C} & 0 & \cellcolor{cellchg}1 \\
+\hex{D} & 0 & 0 \\
+\bottomrule
+\end{tabular}\\[4pt]
+$f = 2{,}3289$
+\end{minipage}
+
+\subsection{Propagação do impacto}
+
+A solução construída aloca $2$ POIs de \texttt{S\_saude} na fonte \hex{A} e
+$1$ POI de \texttt{T\_transporte} na fonte \hex{C}. Aplicando a
+Eq.~\eqref{eq:propagacao}:
+
+\begin{itemize}\setlength\itemsep{1pt}
+\item \textbf{\hex{A} (2 POIs de saúde):} $\hex{A}\!\to\!\hex{A}$ com
+$\alpha=1{,}0$ soma $+2{,}0$ à saúde de \hex{A};
+$\hex{A}\!\to\!\hex{B}$ com $\alpha=0{,}5$ soma $+1{,}0$ à saúde de \hex{B}.
+\item \textbf{\hex{C} (1 POI de transporte):} $\hex{C}\!\to\!\hex{C}$ com
+$\alpha=1{,}0$ soma $+1{,}0$ ao transporte de \hex{C};
+$\hex{C}\!\to\!\hex{D}$ com $\alpha=0{,}5$ soma $+0{,}5$ ao transporte de \hex{D}.
+\end{itemize}
+
+\begin{table}[ht]
+\centering
+\caption{Matriz final $M = M^0 + \Delta$. Em \colorbox{cellchg}{verde}, as
+células alteradas pela propagação.}
+\label{tab:final}
+\begin{tabular}{@{}c ccc@{}}
+\toprule
+Hex & \texttt{S\_saude} & \texttt{T\_transporte} & \texttt{I\_seguranca} \\
+\midrule
+\hex{A} & \cellcolor{cellchg}4 \;\scriptsize($2{+}2$) & 5 & 3 \\
+\hex{B} & \cellcolor{cellchg}5 \;\scriptsize($4{+}1$) & 1 & 6 \\
+\hex{C} & 1 & \cellcolor{cellchg}4 \;\scriptsize($3{+}1$) & 2 \\
+\hex{D} & 5 & \cellcolor{cellchg}2{,}5 \;\scriptsize($2{+}0{,}5$) & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Recálculo do CRITIC e do IQC}
+
+Sobre a matriz final, a função objetivo recalcula os pesos
+CRITIC~\eqref{eq:critic} e o IQC~\eqref{eq:iqc}:
+\begin{equation*}
+w = \bigl(\underbrace{0{,}4436}_{\texttt{S\_saude}},\
+          \underbrace{0{,}3608}_{\texttt{T\_transporte}},\
+          \underbrace{0{,}1956}_{\texttt{I\_seguranca}}\bigr).
+\end{equation*}
+
+\begin{table}[ht]
+\centering
+\caption{IQC por hexágono após a construção e objetivo global.}
+\label{tab:iqc}
+\begin{tabular}{@{}c c@{}}
+\toprule
+Hex & $\mathrm{IQC}_i$ \\
+\midrule
+\hex{A} & 0{,}7424 \\
+\hex{B} & 0{,}6392 \\
+\hex{C} & 0{,}2706 \\
+\hex{D} & 0{,}6767 \\
+\midrule
+$f(X)=\sum_i \mathrm{IQC}_i$ & \textbf{2{,}3289} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Resultado e leitura}
+
+Partindo do baseline $f(\mathbf 0)=1{,}8389$, a fase de construção já elevou o
+objetivo para $f(X)=2{,}3289$, um \textbf{ganho de $+0{,}4900$}. A busca local
+parte daqui tentando movimentos de 1 POI; nesta instância mínima a solução
+construída já é ótima local. Em instâncias reais, é a combinação
+\emph{construção (diversificação via RCL) $+$ busca local (intensificação) $+$
+multi-start} que produz soluções de alta qualidade, exatamente como descrito por
+Resende e Ribeiro.
+
+A leitura urbanística do resultado é direta: concentrar POIs de saúde no hexágono
+\hex{A} (que também irriga \hex{B}) e um POI de transporte em \hex{C} (que
+alcança \hex{D}) foi a alocação de melhor retorno de IQC sob o orçamento dado.
+
+% ============================================================================
+\section{Arquivos gerados para análise estatística}
+\label{sec:arquivos}
+% ============================================================================
+
+Toda execução do otimizador grava automaticamente um conjunto de arquivos
+projetados para análise estatística reprodutível e publicação. Esta seção
+descreve cada arquivo, o que ele representa, como pode ser usado, quais métodos
+estatísticos são adequados e o significado de \emph{cada} atributo (coluna).
+
+\subsection{Organização: duas camadas}
+
+Os arquivos ficam em \texttt{data/optimization\_runs/} e se organizam em duas
+camadas complementares (Figura~\ref{fig:tree}):
+
+\begin{enumerate}
+\item \textbf{Arquivos-mestre acumulativos} (na raiz): cada execução
+\emph{acrescenta} linhas. São os arquivos lidos para análises \emph{entre}
+execuções (comparar métodos, perfis, localidades).
+\item \textbf{Pasta por execução}
+(\texttt{<key\_location>/<perfil>/<método>/<timestamp>\_\_<id>/}): guarda o detalhe
+completo e reprodutível de uma única execução.
+\end{enumerate}
+
+\begin{figure}[ht]
+\centering
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize,frame=single,
+  backgroundcolor=\color{codebg},rulecolor=\color{gray!40}]
+data/optimization_runs/
+|-- all_runs_summary.csv        (mestre: 1 linha por execucao)
+|-- all_per_seed.csv            (mestre: 1 linha por execucao x semente)
+|-- all_per_hexagon_iqc.csv     (mestre: 1 linha por execucao x hexagono)
+|-- all_allocations.csv         (mestre: 1 linha por execucao x POI alocado)
+`-- <key_location>/<perfil>/<metodo>/<timestamp>__<id>/
+    |-- run_metadata.json          metadados completos (reprodutibilidade)
+    |-- run_report.txt             resumo legivel
+    |-- run_summary.csv            resumo de 1 linha (esta execucao)
+    |-- per_seed.csv               resultado por semente
+    |-- per_hexagon_iqc.csv        IQC baseline vs otimizado por hexagono
+    |-- per_hexagon_indicators.csv indicadores (formato longo)
+    |-- allocation.csv             melhor alocacao
+    |-- critic_weights.csv         pesos CRITIC baseline vs otimizado
+    `-- convergence.csv            objetivo por passo de construcao
+\end{lstlisting}
+\caption{Estrutura de diretórios dos arquivos de saída.}
+\label{fig:tree}
+\end{figure}
+
+\subsection{Identificadores comuns (chaves de junção)}
+
+As quatro tabelas-mestre compartilham um conjunto de colunas de identificação,
+que servem de \emph{chaves} para cruzamentos (\texttt{merge}/\texttt{join}) e
+agrupamentos (\texttt{group\_by}). Elas aparecem em todos os arquivos longos e não
+são repetidas nas tabelas de atributos seguintes.
+
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.4cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+run\_id          & texto    & Identificador único da execução (UUID curto). Chave primária que liga \emph{todos} os arquivos de uma mesma execução. \\
+location         & texto    & Nome da localidade (legível). \\
+key\_location    & texto    & Chave saneada da localidade (usada em caminhos). \\
+walking\_profile & texto    & Perfil de caminhada (\texttt{average\_adult}, \texttt{elderly}, \texttt{athlete}). \\
+method\_code     & texto    & Código do método (\texttt{B} = GRASP). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ----------------------------------------------------------------------------
+\subsection{\texttt{all\_runs\_summary.csv} \,/\, \texttt{run\_summary.csv}}
+% ----------------------------------------------------------------------------
+
+\textbf{O que representa.} Uma linha por execução, com todos os indicadores
+agregados. É o arquivo \emph{central} para estatística: cada linha é uma
+observação experimental (uma combinação localidade $\times$ perfil $\times$ método
+$\times$ conjunto de sementes).
+
+\textbf{Como usar e quais métodos aplicar.}
+\begin{itemize}\setlength\itemsep{1pt}
+\item \emph{Comparar métodos/perfis/localidades:} agrupar por fator e comparar
+\texttt{best\_objective} ou \texttt{improvement\_pct}. Testar normalidade
+(Shapiro--Wilk) e homocedasticidade (Levene); se atendidas, \textbf{ANOVA
+fatorial} com pós-teste de \textbf{Tukey HSD}; caso contrário, \textbf{Kruskal--Wallis}
+(ou \textbf{Friedman}, se pareado pela mesma instância localidade$\times$perfil)
+com pós-teste de \textbf{Dunn/Nemenyi}. Reportar tamanho de efeito
+($\eta^2$, $\epsilon^2$ ou $\delta$ de Cliff).
+\item \emph{Modelar o ganho:} regressão linear (ou modelo misto)
+$\texttt{improvement\_pct} \sim \text{método}+\text{perfil}+\text{localidade}+\texttt{budget}$.
+\item \emph{Robustez do método:} usar \texttt{obj\_seed\_std} / \texttt{obj\_seed\_mean}
+(coeficiente de variação) como medida de estabilidade entre sementes.
+\end{itemize}
+
+\paragraph{Atributos --- identificação e estado.}
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+run\_id        & texto      & Identificador único da execução. \\
+timestamp\_utc & ISO-8601   & Data/hora de início em UTC. \\
+location, key\_location, walking\_profile & texto & Ver chaves comuns. \\
+method\_code, method\_name & texto & Código e nome do método. \\
+status         & texto      & \texttt{ok}, \texttt{error}, \texttt{placeholder}, etc. \\
+run\_dir       & texto      & Caminho da pasta detalhada desta execução. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Atributos --- configuração.}
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+budget                 & inteiro & Número $B$ de POIs alocados. \\
+n\_seeds               & inteiro & Número de sementes (reinícios multi-start). \\
+best\_seed             & inteiro & Semente que produziu a melhor solução. \\
+objective\_metric      & texto   & Nome da métrica (\texttt{sum\_iqc}). \\
+optimization\_direction& texto   & Direção (\texttt{maximize}). \\
+rcl\_alpha             & real    & Parâmetro $\alpha$ da RCL. \\
+construction\_sample\_size & inteiro & Pares avaliados por passo (\emph{sampled greedy}). \\
+local\_search\_max\_evals & inteiro & Teto de avaliações da busca local. \\
+h3\_resolution         & inteiro & Resolução H3 da malha. \\
+distance               & inteiro & Distância (m) usada na geração dos dados. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Atributos --- objetivo e ganho.}
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+baseline\_objective & real & $f(\mathbf 0)$: soma do IQC sem intervenção. \\
+best\_objective     & real & $f(X^\star)$: soma do IQC da melhor solução. \\
+improvement         & real & $f(X^\star)-f(\mathbf 0)$ (ganho absoluto). \\
+improvement\_pct    & real & Ganho relativo ($100\cdot$ \texttt{improvement}/\texttt{baseline}). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Atributos --- distribuição entre sementes.}
+Resumo do objetivo \emph{após busca local} sobre as \texttt{n\_seeds} execuções
+(útil para caracterizar a variabilidade estocástica do GRASP).
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+obj\_seed\_mean & real & Média do objetivo entre as sementes. \\
+obj\_seed\_std  & real & Desvio-padrão amostral (estabilidade do método). \\
+obj\_seed\_min  & real & Pior objetivo entre as sementes. \\
+obj\_seed\_max  & real & Melhor objetivo ($=$ \texttt{best\_objective}). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Atributos --- distribuição do IQC por hexágono.}
+Estatísticas descritivas do IQC \emph{entre hexágonos} (não entre sementes).
+Respondem diretamente à pergunta ``como o IQC varia nesta localidade/perfil''.
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{7.8cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+iqc\_base\_mean, iqc\_base\_std & real & Média e desvio do IQC \emph{baseline} entre hexágonos. \\
+iqc\_opt\_mean, iqc\_opt\_std   & real & Média e desvio do IQC \emph{otimizado}. \\
+iqc\_opt\_min, iqc\_opt\_median, iqc\_opt\_max & real & Mínimo, mediana e máximo do IQC otimizado. \\
+delta\_iqc\_mean, delta\_iqc\_std & real & Média e desvio da variação $\Delta\mathrm{IQC}$ por hexágono. \\
+delta\_iqc\_min, delta\_iqc\_max & real & Maior queda e maior aumento de IQC entre hexágonos. \\
+delta\_iqc\_positive\_count & inteiro & Quantos hexágonos tiveram o IQC \emph{aumentado}. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Atributos --- instância, solução e tempo.}
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+n\_hexagons        & inteiro & Total de hexágonos da malha. \\
+n\_source\_hexagons& inteiro & Hexágonos-fonte elegíveis (que propagam impacto). \\
+n\_candidate\_dimensions & inteiro & Dimensões de POI alocáveis. \\
+allocated\_pois    & inteiro & POIs alocados na melhor solução ($=B$). \\
+distinct\_pairs    & inteiro & Pares (hex, dimensão) distintos usados. \\
+runtime\_seconds\_total & real & Tempo total da execução (todas as sementes). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ----------------------------------------------------------------------------
+\subsection{\texttt{all\_per\_seed.csv} \,/\, \texttt{per\_seed.csv}}
+% ----------------------------------------------------------------------------
+
+\textbf{O que representa.} Uma linha por semente. Expõe a \emph{variabilidade
+estocástica} interna: como cada reinício se saiu na construção e após a busca
+local.
+
+\textbf{Como usar e quais métodos aplicar.}
+\begin{itemize}\setlength\itemsep{1pt}
+\item \emph{Variabilidade:} média, desvio, coeficiente de variação e intervalos de
+confiança \textbf{bootstrap} de \texttt{local\_search\_objective}.
+\item \emph{Contribuição da busca local:} testar se \texttt{local\_search\_gain}
+difere de zero (teste $t$ pareado ou \textbf{Wilcoxon} de postos sinalizados,
+comparando construção vs.\ pós-busca-local).
+\item \emph{Eficiência:} relacionar \texttt{runtime\_seconds} com a qualidade
+(análise tempo$\times$qualidade), base para \emph{time-to-target}.
+\end{itemize}
+
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+seed                    & inteiro & Semente do gerador pseudoaleatório. \\
+construction\_objective & real & Objetivo ao fim da fase de construção. \\
+local\_search\_objective& real & Objetivo após a busca local (qualidade final desta semente). \\
+local\_search\_gain     & real & Ganho da busca local (\texttt{local\_search} $-$ \texttt{construction}). \\
+improvement\_over\_baseline & real & \texttt{local\_search\_objective} $-$ \texttt{baseline}. \\
+runtime\_seconds        & real & Tempo desta semente (construção $+$ busca local). \\
+distinct\_pairs         & inteiro & Pares (hex, dimensão) distintos na solução desta semente. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ----------------------------------------------------------------------------
+\subsection{\texttt{all\_per\_hexagon\_iqc.csv} \,/\, \texttt{per\_hexagon\_iqc.csv}}
+% ----------------------------------------------------------------------------
+
+\textbf{O que representa.} Uma linha por hexágono (georreferenciada), com o IQC
+antes e depois da intervenção. É a base para a \emph{análise espacial} dos
+ganhos.
+
+\textbf{Como usar e quais métodos aplicar.}
+\begin{itemize}\setlength\itemsep{1pt}
+\item \emph{Distribuição:} histogramas e \emph{boxplots} de \texttt{delta\_iqc}
+por localidade/perfil; teste de Wilcoxon pareado entre \texttt{iqc\_baseline} e
+\texttt{iqc\_optimized}.
+\item \emph{Autocorrelação espacial:} \textbf{I de Moran} (global) e \textbf{LISA}
+(local) sobre \texttt{delta\_iqc} usando \texttt{latitude}/\texttt{longitude} para
+a matriz de vizinhança --- verifica se os ganhos formam aglomerados espaciais.
+\item \emph{Pontos quentes:} \textbf{Getis--Ord $G_i^\star$} para identificar
+\emph{hot/cold spots} de melhoria.
+\item \emph{Validação:} comparar \texttt{iqc\_baseline} (recalculado pela função
+objetivo) com \texttt{iqc\_pipeline} (valor original do pipeline) como checagem de
+consistência.
+\end{itemize}
+
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+h3\_id        & texto & Identificador H3 do hexágono. \\
+latitude, longitude & real & Coordenadas do centro do hexágono. \\
+iqc\_baseline & real & IQC do hexágono \emph{sem} intervenção (métrica da função objetivo). \\
+iqc\_optimized& real & IQC do hexágono na melhor solução. \\
+delta\_iqc    & real & Variação $\texttt{iqc\_optimized}-\texttt{iqc\_baseline}$. \\
+iqc\_pipeline & real & IQC original calculado pelo pipeline (referência). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ----------------------------------------------------------------------------
+\subsection{\texttt{per\_hexagon\_indicators.csv}}
+% ----------------------------------------------------------------------------
+
+\textbf{O que representa.} Formato \emph{longo} (\emph{tidy}): uma linha por
+hexágono $\times$ indicador, com o valor antes/depois. Permite ver \emph{quais
+indicadores} (saúde, transporte, etc.) moveram o IQC e \emph{onde}.
+
+\textbf{Como usar e quais métodos aplicar.} Decompor o ganho por dimensão;
+\emph{heatmaps} indicador$\times$hexágono; correlação entre \texttt{delta} dos
+indicadores e \texttt{delta\_iqc}; análise de contribuição (qual indicador explica
+melhor a variação do IQC).
+
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+h3\_id          & texto & Hexágono. \\
+indicator       & texto & Nome do indicador (ex.\ \texttt{S\_saude}). \\
+value\_baseline & real  & Valor do indicador antes da intervenção. \\
+value\_optimized& real  & Valor após a propagação dos POIs alocados. \\
+delta           & real  & \texttt{value\_optimized} $-$ \texttt{value\_baseline}. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ----------------------------------------------------------------------------
+\subsection{\texttt{all\_allocations.csv} \,/\, \texttt{allocation.csv}}
+% ----------------------------------------------------------------------------
+
+\textbf{O que representa.} Uma linha por item alocado: \emph{onde} e \emph{quanto}
+de cada dimensão foi inserido na melhor solução.
+
+\textbf{Como usar e quais métodos aplicar.} Frequência de alocação por dimensão e
+por hexágono; mapas de calor da alocação; relação entre alocação e
+\texttt{delta\_iqc} (cruzando por \texttt{h3\_id}); padrões de alocação entre
+perfis (ex.\ idosos vs.\ atletas priorizam dimensões diferentes?).
+
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+h3\_id    & texto   & Hexágono-fonte que recebeu os POIs. \\
+dimension & texto   & Dimensão do POI alocado. \\
+quantity  & inteiro & Quantidade de POIs alocados naquele par. \\
+latitude, longitude & real & Coordenadas do hexágono-fonte. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ----------------------------------------------------------------------------
+\subsection{\texttt{critic\_weights.csv}}
+% ----------------------------------------------------------------------------
+
+\textbf{O que representa.} Os pesos CRITIC de cada indicador, \emph{antes} e
+\emph{depois} da intervenção. Como o CRITIC é orientado a dados, a alocação altera
+a importância relativa dos indicadores.
+
+\textbf{Como usar e quais métodos aplicar.} Comparar \texttt{weight\_baseline} vs.\
+\texttt{weight\_optimized} (gráfico de barras pareado); análise de sensibilidade do
+IQC aos pesos; discutir como a intervenção reequilibra a importância das
+dimensões.
+
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+indicator        & texto & Nome do indicador. \\
+weight\_baseline & real  & Peso CRITIC no cenário baseline (soma $=1$). \\
+weight\_optimized& real  & Peso CRITIC na melhor solução (soma $=1$). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ----------------------------------------------------------------------------
+\subsection{\texttt{convergence.csv}}
+% ----------------------------------------------------------------------------
+
+\textbf{O que representa.} O objetivo registrado \emph{a cada passo} da fase de
+construção, para \emph{cada} semente (formato longo). Suporta curvas de
+convergência e gráficos \emph{time-to-target} (TTT), padrão na literatura do GRASP.
+
+\textbf{Como usar e quais métodos aplicar.} Curvas objetivo$\times$passo com
+banda de confiança (média $\pm$ IC entre sementes); \emph{área sob a curva} como
+medida de rapidez de convergência; \textbf{TTT plots} (probabilidade acumulada de
+atingir um alvo) com ajuste de distribuição \textbf{exponencial deslocada}
+(Aiex, Resende e Ribeiro).
+
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{8.0cm}@{}}
+\toprule
+\normalfont Atributo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+seed      & inteiro & Semente correspondente à trajetória. \\
+step      & inteiro & Passo de construção ($1,\dots,B$). \\
+objective & real    & Valor do objetivo após inserir o $k$-ésimo POI. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ----------------------------------------------------------------------------
+\subsection{\texttt{run\_metadata.json}}
+% ----------------------------------------------------------------------------
+
+\textbf{O que representa.} Os metadados completos da execução, em JSON, garantindo
+\textbf{reprodutibilidade} (requisito para periódicos A1/A2). Reúne, num só
+arquivo: identificação, configuração, objetivo, \texttt{parameters} (todos os
+parâmetros do método), \texttt{instance} (tamanho da instância), \texttt{seeds}
+(lista completa) e \texttt{environment} --- versões de Python, \texttt{numpy},
+\texttt{pandas}, plataforma e o \emph{commit} do Git. Com ele, qualquer execução
+pode ser refeita exatamente.
+
+\textbf{Como usar.} É o registro canônico de \emph{proveniência}: antes de
+reprocessar ou comparar resultados, confira \texttt{environment.git\_commit} (versão
+exata do código), \texttt{seeds} (sementes que reproduzem o multi-start) e
+\texttt{input\_files} (dados de origem). Diferentemente dos CSVs, é hierárquico:
+campos escalares no topo e três blocos aninhados (\texttt{parameters},
+\texttt{instance}, \texttt{environment}), detalhados a seguir.
+
+\paragraph{Campos de topo.}
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{7.8cm}@{}}
+\toprule
+\normalfont Campo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+run\_id        & texto    & Identificador único da execução (liga ao \texttt{run\_id} dos CSVs). \\
+timestamp\_utc & ISO-8601 & Data/hora de início em UTC (\texttt{datetime.isoformat}). \\
+location, key\_location, walking\_profile & texto & Ver chaves comuns. \\
+method\_code, method\_name & texto & Código e nome do método. \\
+status         & texto    & Estado final (\texttt{ok}, \texttt{error}, \dots). \\
+budget         & inteiro  & Orçamento $B$ de POIs. \\
+seeds          & lista[int] & \emph{Todas} as sementes usadas (não só a melhor) --- reproduz o multi-start. \\
+n\_seeds       & inteiro  & Tamanho de \texttt{seeds}. \\
+objective\_metric & texto & Métrica otimizada (\texttt{sum\_iqc}). \\
+optimization\_direction & texto & Direção (\texttt{maximize}). \\
+baseline\_objective & real & $f(\mathbf 0)$: objetivo sem intervenção. \\
+best\_objective & real    & $f(X^\star)$: objetivo da melhor solução. \\
+improvement, improvement\_pct & real & Ganho absoluto e relativo (\%) sobre o baseline. \\
+best\_seed     & inteiro  & Semente que produziu a melhor solução. \\
+runtime\_seconds\_total & real & Tempo total (todas as sementes), em segundos. \\
+h3\_resolution & inteiro  & Resolução H3 da malha. \\
+distance       & inteiro  & Distância (m) usada na geração dos dados. \\
+message        & texto    & Resumo textual do resultado retornado pelo método. \\
+input\_files   & objeto   & Mapa \texttt{nome}$\to$\texttt{caminho} dos arquivos de entrada (rastreabilidade da origem dos dados). \\
+parameters     & objeto   & Parâmetros do método (Tabela abaixo). \\
+instance       & objeto   & Tamanho da instância (Tabela abaixo). \\
+environment    & objeto   & Ambiente de execução (Tabela abaixo). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Bloco \texttt{parameters}.} Os controles efetivamente usados na
+execução (constantes do topo de \texttt{grasp.py}; ver Tabela~\ref{tab:params}).
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{7.8cm}@{}}
+\toprule
+\normalfont Campo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+rcl\_alpha                 & real      & Limiar $\alpha$ da RCL (Eq.~\ref{eq:rcl}). \\
+construction\_sample\_size & inteiro   & Pares avaliados por passo (\emph{sampled greedy}). \\
+local\_search\_max\_evals  & inteiro   & Teto de avaliações da busca local por semente. \\
+improvement\_eps           & real      & Ganho mínimo ($10^{-9}$) para aceitar uma melhoria na busca local. \\
+parallel\_workers          & inteiro   & Número de processos \emph{worker} efetivamente usados (1 $=$ serial). \\
+eval\_cache                & booleano  & Se a memoização da avaliação por \emph{worker} esteve ativa. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Bloco \texttt{instance}.} Descreve o tamanho do problema resolvido.
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{7.8cm}@{}}
+\toprule
+\normalfont Campo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+n\_hexagons          & inteiro     & Total de hexágonos da malha ($n$). \\
+n\_source\_hexagons  & inteiro     & Hexágonos-fonte elegíveis a receber POIs (que propagam impacto). \\
+n\_candidate\_dimensions & inteiro & Número $m$ de dimensões de POI alocáveis. \\
+candidate\_dimensions & lista[texto] & Nomes das dimensões alocáveis (define as colunas de $X$). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Bloco \texttt{environment}.} Captura o ambiente para reprodução exata.
+\begin{center}\small
+\begin{tabular}{@{}>{\ttfamily}l l p{7.8cm}@{}}
+\toprule
+\normalfont Campo & \normalfont Tipo & \normalfont Descrição \\
+\midrule
+python      & texto & Versão do interpretador Python. \\
+numpy       & texto & Versão do \texttt{numpy}. \\
+pandas      & texto & Versão do \texttt{pandas}. \\
+platform    & texto & Descrição da plataforma/sistema operacional. \\
+git\_commit & texto & \emph{Hash} curto do \emph{commit} do código (ou \texttt{null} fora de um repositório Git). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ----------------------------------------------------------------------------
+\subsection{\texttt{run\_report.txt}}
+% ----------------------------------------------------------------------------
+
+\textbf{O que representa.} Um resumo legível por humanos da execução (mesma
+informação do \texttt{run\_summary.csv}, formatada). Serve para conferência rápida
+e para anexos do relatório/artigo.
+
+% ----------------------------------------------------------------------------
+\subsection{Receituário de análises}
+% ----------------------------------------------------------------------------
+
+A Tabela~\ref{tab:receituario} mapeia perguntas de pesquisa típicas aos arquivos e
+métodos correspondentes.
+
+\begin{table}[ht]
+\centering
+\caption{Da pergunta de pesquisa ao arquivo e ao método estatístico.}
+\label{tab:receituario}
+\small
+\begin{tabular}{@{}p{4.6cm} p{4.2cm} p{5.6cm}@{}}
+\toprule
+\textbf{Pergunta} & \textbf{Arquivo(s)} & \textbf{Método} \\
+\midrule
+Um método supera os outros? &
+\texttt{all\_runs\_summary} &
+Friedman + pós-teste de Nemenyi (pareado por instância); ou ANOVA + Tukey. \\
+\addlinespace
+O ganho varia por perfil/localidade? &
+\texttt{all\_runs\_summary} &
+ANOVA fatorial / modelo misto; $\eta^2$ como efeito. \\
+\addlinespace
+Quão estável é o método? &
+\texttt{all\_per\_seed} &
+Coeficiente de variação; IC bootstrap; Wilcoxon (construção vs.\ busca local). \\
+\addlinespace
+Os ganhos de IQC formam aglomerados no espaço? &
+\texttt{all\_per\_hexagon\_iqc} &
+I de Moran (global), LISA (local), Getis--Ord $G_i^\star$. \\
+\addlinespace
+Quais indicadores explicam o ganho? &
+\texttt{per\_hexagon\_indicators} &
+Correlação \texttt{delta}$\leftrightarrow$\texttt{delta\_iqc}; heatmaps; contribuição. \\
+\addlinespace
+Onde os POIs são alocados? &
+\texttt{all\_allocations} &
+Frequências; mapas de calor; comparação entre perfis. \\
+\addlinespace
+A intervenção reequilibra os pesos? &
+\texttt{critic\_weights} &
+Comparação pareada baseline vs.\ otimizado; sensibilidade. \\
+\addlinespace
+Quão rápido o método converge? &
+\texttt{convergence} &
+Curvas média $\pm$ IC; TTT plots (exponencial deslocada). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Ponto de partida prático.} Carregar \texttt{all\_runs\_summary.csv} e
+cruzar com os demais mestres pela coluna \texttt{run\_id} cobre a maior parte das
+análises. Os arquivos por execução entram quando se deseja o detalhe fino (curvas
+de convergência, mapas espaciais, decomposição por indicador).
+
+% ============================================================================
+\section{Considerações finais e extensões}
+% ============================================================================
+
+A implementação cobre o GRASP \emph{tradicional} de duas fases. A estrutura
+modular (avaliação isolada em \texttt{\_evaluate}; construção, busca local e
+multi-start independentes) facilita evoluções descritas por Resende e Ribeiro:
+
+\begin{itemize}\setlength\itemsep{2pt}
+\item \textbf{Reactive GRASP}: auto-ajuste do parâmetro $\alpha$ ao longo das
+iterações, em vez de fixo, aumentando a robustez;
+\item \textbf{Path-Relinking}: intensificação que explora trajetórias entre a
+solução corrente e um conjunto de soluções de elite (corresponde ao método
+híbrido da opção E);
+\item \textbf{Estratégias de reinício} (\emph{restart}) para reduzir a cauda da
+distribuição de tempo até alvo.
+\end{itemize}
+
+O principal desafio prático do problema --- a não-separabilidade da função
+objetivo (CRITIC global) --- foi tratado com \emph{sampled greedy} na construção e
+um orçamento de avaliações na busca local, mantendo o tempo de execução
+previsível sem comprometer a qualidade.
+
+% ============================================================================
+\begin{thebibliography}{9}
+\bibitem{feo1995}
+T.~A.~Feo and M.~G.~C.~Resende.
+\emph{Greedy randomized adaptive search procedures}.
+Journal of Global Optimization, 6:109--133, 1995.
+
+\bibitem{rr2016}
+M.~G.~C.~Resende and C.~C.~Ribeiro.
+\emph{Optimization by GRASP: Greedy Randomized Adaptive Search Procedures}.
+Springer, 2016.
+
+\bibitem{rr2019}
+M.~G.~C.~Resende and C.~C.~Ribeiro.
+\emph{Greedy Randomized Adaptive Search Procedures: Advances and Extensions}.
+In: Handbook of Metaheuristics, cap.~6, Springer, 2019.
+\end{thebibliography}
+
+\end{document}
