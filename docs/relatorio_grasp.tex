@@ -974,6 +974,9 @@ optimization\_direction& texto   & Direção (\texttt{maximize}). \\
 rcl\_alpha             & real    & Parâmetro $\alpha$ da RCL. \\
 construction\_sample\_size & inteiro & Pares avaliados por passo (\emph{sampled greedy}). \\
 local\_search\_max\_evals & inteiro & Teto de avaliações da busca local. \\
+improvement\_eps       & real    & Ganho mínimo ($10^{-9}$) para aceitar melhoria na busca local. \\
+parallel\_workers      & inteiro & Processos \emph{worker} efetivamente usados (1 $=$ serial). \\
+eval\_cache            & booleano & Se a memoização da avaliação por \emph{worker} esteve ativa. \\
 h3\_resolution         & inteiro & Resolução H3 da malha. \\
 distance               & inteiro & Distância (m) usada na geração dos dados. \\
 \bottomrule

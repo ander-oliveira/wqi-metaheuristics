@@ -59,6 +59,7 @@ RUN_SUMMARY_COLUMNS = [
     'allocated_pois', 'distinct_pairs',
     'runtime_seconds_total',
     'rcl_alpha', 'construction_sample_size', 'local_search_max_evals',
+    'improvement_eps', 'parallel_workers', 'eval_cache',
     'h3_resolution', 'distance', 'run_dir',
 ]
 
@@ -257,6 +258,9 @@ def persist_run(*,
             'rcl_alpha': params.get('rcl_alpha'),
             'construction_sample_size': params.get('construction_sample_size'),
             'local_search_max_evals': params.get('local_search_max_evals'),
+            'improvement_eps': params.get('improvement_eps'),
+            'parallel_workers': params.get('parallel_workers'),
+            'eval_cache': params.get('eval_cache'),
             'h3_resolution': h3_resolution, 'distance': distance,
             'run_dir': run_dir,
         }
