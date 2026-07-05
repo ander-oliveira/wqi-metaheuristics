@@ -5,3 +5,4 @@ data/dem/reprojected_*.tif
 .venv/
 venv/
 analysis/*
+.claude/
