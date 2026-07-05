@@ -524,14 +524,17 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
                              location: str,
                              profile_key: str,
                              base_dir: str = 'data',
-                             distance: int = None) -> None:
+                             distance: int = None,
+                             gdf_installed_pois: gpd.GeoDataFrame = None,
+                             installed_pois_label: str = 'POIs instalados',
+                             filename_suffix: str = '') -> None:
     """
     Generates a heatmap visualization of the walkability index (IQC).
-    
+
     Hexagons are colored according to their IQC value (0-1 scale)
     using a heatmap color palette. The map includes green/water areas,
     black edges, and a vertical colorbar legend.
-    
+
     Args:
         df_walkability: DataFrame with h3_id and IQC columns [0, 1]
         graph: NetworkX MultiDiGraph with the street network
@@ -541,6 +544,12 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
         location: Location name for saving the output
         profile_key: Profile key for file naming
         base_dir: Base directory for data storage
+        gdf_installed_pois: Optional GeoDataFrame with installed POIs
+            (geometry + 'quantity' column). Plotted as black dots sized by
+            quantity, with a legend entry.
+        installed_pois_label: Legend label for the installed POIs.
+        filename_suffix: Optional suffix appended to output file names
+            (e.g. '_baseline', '_after_grasp').
     """
     print(f"\n{'='*60}")
     print(f"GENERATING WALKABILITY HEATMAP")
@@ -613,7 +622,24 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
     # Plot center point
     center_coords = graph.nodes[center_node]
     ax.scatter(center_coords['x'], center_coords['y'], c='red', s=50, zorder=5)
-    
+
+    # Plot installed POIs (black dots sized by quantity)
+    has_installed_pois = gdf_installed_pois is not None and not gdf_installed_pois.empty
+    if has_installed_pois:
+        quantities = gdf_installed_pois.get('quantity', pd.Series(1, index=gdf_installed_pois.index))
+        sizes = 14 + 10 * pd.to_numeric(quantities, errors='coerce').fillna(1).clip(lower=1)
+        ax.scatter(
+            gdf_installed_pois.geometry.x, gdf_installed_pois.geometry.y,
+            c='black', s=sizes, edgecolor='white', linewidth=0.5, zorder=6,
+        )
+        total_pois = int(pd.to_numeric(quantities, errors='coerce').fillna(1).sum())
+        ax.legend(
+            handles=[Line2D([0], [0], marker='o', color='w', markerfacecolor='black',
+                            markeredgecolor='white', markersize=8,
+                            label=f'{installed_pois_label} ({total_pois})')],
+            loc='upper right', fontsize=10, frameon=True, fancybox=True,
+        )
+
     # Add colorbar (vertical, on the right)
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=1))
     sm.set_array([])
@@ -633,7 +659,7 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
     output_dir = f"{base_dir}/visualizations"
     os.makedirs(output_dir, exist_ok=True)
     dist_suffix = f"_dist{distance}" if distance is not None else ""
-    output_file = f"{output_dir}/{location}_walkability_heatmap_{profile_key}{dist_suffix}.png"
+    output_file = f"{output_dir}/{location}_walkability_heatmap_{profile_key}{dist_suffix}{filename_suffix}.png"
     
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor='white')
@@ -701,13 +727,32 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
                 
                 # Plot edges
                 edges_gdf.plot(ax=ax_cls, color='black', linewidth=0.5, alpha=0.5, zorder=3)
-                
+
                 # Plot center point
                 ax_cls.scatter(center_coords['x'], center_coords['y'], c='red', s=50, zorder=5)
-                
+
+                # Plot installed POIs, keeping the classification legend visible
+                if has_installed_pois:
+                    quantities = gdf_installed_pois.get('quantity', pd.Series(1, index=gdf_installed_pois.index))
+                    sizes = 14 + 10 * pd.to_numeric(quantities, errors='coerce').fillna(1).clip(lower=1)
+                    ax_cls.scatter(
+                        gdf_installed_pois.geometry.x, gdf_installed_pois.geometry.y,
+                        c='black', s=sizes, edgecolor='white', linewidth=0.5, zorder=6,
+                    )
+                    total_pois = int(pd.to_numeric(quantities, errors='coerce').fillna(1).sum())
+                    class_legend = ax_cls.get_legend()
+                    ax_cls.legend(
+                        handles=[Line2D([0], [0], marker='o', color='w', markerfacecolor='black',
+                                        markeredgecolor='white', markersize=8,
+                                        label=f'{installed_pois_label} ({total_pois})')],
+                        loc='upper right', fontsize=9, frameon=True, fancybox=True,
+                    )
+                    if class_legend is not None:
+                        ax_cls.add_artist(class_legend)
+
                 ax_cls.set_axis_off()
-                
-                cls_output = f"{output_dir}/{location}_walkability_heatmap_{profile_key}{dist_suffix}_{file_suffix}.png"
+
+                cls_output = f"{output_dir}/{location}_walkability_heatmap_{profile_key}{dist_suffix}{filename_suffix}_{file_suffix}.png"
                 plt.tight_layout()
                 plt.savefig(cls_output, dpi=300, bbox_inches='tight', facecolor='white')
                 plt.close(fig_cls)

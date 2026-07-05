@@ -22,10 +22,11 @@ def _ask_execution_mode() -> str:
         print("1 - Run full pipeline for all walking profiles")
         print("2 - Use existing dataset for selected location")
         print("3 - Use existing datasets for ALL locations and ALL available profiles")
+        print("4 - Generate IQC heatmaps from existing datasets (no metaheuristics)")
         choice = input("Enter option number: ").strip()
-        if choice in {'1', '2', '3'}:
+        if choice in {'1', '2', '3', '4'}:
             return choice
-        print("Invalid option. Choose 1, 2, or 3.")
+        print("Invalid option. Choose 1, 2, 3, or 4.")
 
 
 def _build_profiles_to_run(walking_profiles: dict) -> list:
@@ -443,12 +444,26 @@ def run_cli() -> None:
         selected_locations = select_locations(allow_all=True)
     elif execution_mode == '2':
         selected_locations = select_locations(allow_all=False)
-    else:
+    elif execution_mode == '3':
         selected_locations = select_locations(allow_all=True, force_all=True)
         print(f"\nExecution mode 3 selected: {len(selected_locations)} locations will run automatically.")
+    else:
+        selected_locations = select_locations(allow_all=True)
 
     if not selected_locations:
         print("No locations selected.")
+        return
+
+    if execution_mode == '4':
+        from .map_mode import run_iqc_map_generation
+        run_iqc_map_generation(
+            selected_locations=selected_locations,
+            profile_keys=[key for key, _ in profiles_to_run],
+            h3_resolution=H3_RESOLUTION,
+            distance=DISTANCE,
+            network_type=NETWORK_TYPE,
+        )
+        print('Done.')
         return
 
     if execution_mode == '2':

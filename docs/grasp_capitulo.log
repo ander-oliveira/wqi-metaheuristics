@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.21)  5 JUL 2026 10:02
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.21)  5 JUL 2026 14:13
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -951,17 +951,17 @@ Overfull \hbox (135.21269pt too wide) in alignment at lines 653--670
  []
 
 [23]
-<figures/grasp_box_delta.pdf, id=459, 397.33067pt x 201.7678pt>
+<figures/grasp_box_delta.pdf, id=459, 397.33067pt x 202.09717pt>
 File: figures/grasp_box_delta.pdf Graphic file (type pdf)
 <use figures/grasp_box_delta.pdf>
 Package pdftex.def Info: figures/grasp_box_delta.pdf  used on input line 674.
-(pdftex.def)             Requested size: 360.0pt x 182.81775pt.
+(pdftex.def)             Requested size: 360.0pt x 183.11618pt.
  [24]
-<figures/grasp_alpha.pdf, id=468, 425.63736pt x 216.29657pt>
+<figures/grasp_alpha.pdf, id=468, 425.63736pt x 217.72379pt>
 File: figures/grasp_alpha.pdf Graphic file (type pdf)
 <use figures/grasp_alpha.pdf>
 Package pdftex.def Info: figures/grasp_alpha.pdf  used on input line 689.
-(pdftex.def)             Requested size: 360.0pt x 182.94533pt.
+(pdftex.def)             Requested size: 360.0pt x 184.15247pt.
 
 Overfull \hbox (61.83784pt too wide) in alignment at lines 699--704
  [] [] [] [] [] [] 
@@ -980,12 +980,12 @@ Overfull \hbox (61.83784pt too wide) in alignment at lines 708--725
 [25 <./figures/grasp_box_delta.pdf>]
 ignored: Infinite glue shrinkage found in box being 
 split [26 <./figures/grasp_alpha.pdf>]
-<figures/grasp_alpha_scatter.pdf, id=579, 397.33067pt x 210.7318pt>
+<figures/grasp_alpha_scatter.pdf, id=591, 397.69139pt x 212.17468pt>
 File: figures/grasp_alpha_scatter.pdf Graphic file (type pdf)
 <use figures/grasp_alpha_scatter.pdf>
 Package pdftex.def Info: figures/grasp_alpha_scatter.pdf  used on input line 72
 9.
-(pdftex.def)             Requested size: 360.0pt x 190.93983pt.
+(pdftex.def)             Requested size: 360.0pt x 192.06592pt.
 
 Overfull \hbox (160.18465pt too wide) in alignment at lines 739--744
  [] [] [] [] [] [] 
@@ -1002,18 +1002,18 @@ Overfull \hbox (160.18465pt too wide) in alignment at lines 748--765
  []
 
 [27 <./figures/grasp_alpha_scatter.pdf>]
-<figures/grasp_constr_ls.pdf, id=633, 290.91312pt x 238.55574pt>
+<figures/grasp_constr_ls.pdf, id=657, 291.27383pt x 238.77531pt>
 File: figures/grasp_constr_ls.pdf Graphic file (type pdf)
 <use figures/grasp_constr_ls.pdf>
 Package pdftex.def Info: figures/grasp_constr_ls.pdf  used on input line 769.
-(pdftex.def)             Requested size: 223.19824pt x 183.02962pt.
+(pdftex.def)             Requested size: 223.19824pt x 182.97221pt.
  [28 <./figures/grasp_constr_ls.pdf>]
-<figures/grasp_convergence.pdf, id=678, 397.33067pt x 206.42169pt>
+<figures/grasp_convergence.pdf, id=704, 397.33067pt x 206.92357pt>
 File: figures/grasp_convergence.pdf Graphic file (type pdf)
 <use figures/grasp_convergence.pdf>
 Package pdftex.def Info: figures/grasp_convergence.pdf  used on input line 788.
 
-(pdftex.def)             Requested size: 360.0pt x 187.03453pt.
+(pdftex.def)             Requested size: 360.0pt x 187.48927pt.
 
 Overfull \hbox (73.22601pt too wide) in paragraph at lines 798--806
  [][] 
@@ -1035,16 +1035,16 @@ Overfull \hbox (13.3085pt too wide) in alignment at lines 827--844
  []
 
 [30 <./figures/grasp_convergence.pdf>]
-<figures/grasp_iqc_dist.pdf, id=735, 397.33067pt x 210.7318pt>
+<figures/grasp_iqc_dist.pdf, id=766, 397.69139pt x 211.45325pt>
 File: figures/grasp_iqc_dist.pdf Graphic file (type pdf)
 <use figures/grasp_iqc_dist.pdf>
 Package pdftex.def Info: figures/grasp_iqc_dist.pdf  used on input line 848.
-(pdftex.def)             Requested size: 360.0pt x 190.93983pt.
-<figures/grasp_skewkurt.pdf, id=736, 311.39963pt x 236.79341pt>
+(pdftex.def)             Requested size: 360.0pt x 191.41284pt.
+<figures/grasp_skewkurt.pdf, id=767, 311.68193pt x 237.07571pt>
 File: figures/grasp_skewkurt.pdf Graphic file (type pdf)
 <use figures/grasp_skewkurt.pdf>
 Package pdftex.def Info: figures/grasp_skewkurt.pdf  used on input line 855.
-(pdftex.def)             Requested size: 237.60132pt x 180.68025pt.
+(pdftex.def)             Requested size: 237.60132pt x 180.73288pt.
  [31] [32 <./figures/grasp_iqc_dist.pdf> <./figures/grasp_skewkurt.pdf>] [33] (
 ./grasp_capitulo.aux)
  ***********
@@ -1084,10 +1084,10 @@ ts/type1/public/cm-super/sfrm1728.pfb><c:/texlive/2026/texmf-dist/fonts/type1/p
 ublic/cm-super/sfti1095.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-s
 uper/sftt0900.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sftt1
 095.pfb>
-Output written on grasp_capitulo.pdf (33 pages, 779615 bytes).
+Output written on grasp_capitulo.pdf (33 pages, 792790 bytes).
 PDF statistics:
- 973 PDF objects out of 1000 (max. 8388607)
- 619 compressed objects within 7 object streams
+ 1010 PDF objects out of 1200 (max. 8388607)
+ 631 compressed objects within 7 object streams
  212 named destinations out of 1000 (max. 500000)
  336 words of extra memory for PDF output out of 10000 (max. 10000000)
 

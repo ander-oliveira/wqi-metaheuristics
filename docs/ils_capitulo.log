@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.21)  5 JUL 2026 10:02
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.21)  5 JUL 2026 14:13
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -939,17 +939,17 @@ Overfull \hbox (89.06003pt too wide) in paragraph at lines 576--586
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-<figures/ils_convergence.pdf, id=345, 397.33067pt x 206.42169pt>
+<figures/ils_convergence.pdf, id=345, 397.33067pt x 206.92357pt>
 File: figures/ils_convergence.pdf Graphic file (type pdf)
 <use figures/ils_convergence.pdf>
 Package pdftex.def Info: figures/ils_convergence.pdf  used on input line 592.
-(pdftex.def)             Requested size: 360.0pt x 187.03453pt.
+(pdftex.def)             Requested size: 360.0pt x 187.48927pt.
 [19 <./figures/ils_box_strength.pdf>] [20 <./figures/ils_convergence.pdf>]
-<figures/ils_init_best.pdf, id=448, 409.58554pt x 210.7318pt>
+<figures/ils_init_best.pdf, id=455, 405.1411pt x 212.03354pt>
 File: figures/ils_init_best.pdf Graphic file (type pdf)
 <use figures/ils_init_best.pdf>
 Package pdftex.def Info: figures/ils_init_best.pdf  used on input line 606.
-(pdftex.def)             Requested size: 360.0pt x 185.2291pt.
+(pdftex.def)             Requested size: 360.0pt x 188.41483pt.
 
 [21 <./figures/ils_init_best.pdf>]
 Overfull \hbox (13.3085pt too wide) in alignment at lines 619--624
@@ -966,16 +966,16 @@ Overfull \hbox (13.3085pt too wide) in alignment at lines 628--645
  [] [] [] [] [] [] 
  []
 
-<figures/ils_iqc_dist.pdf, id=508, 397.33067pt x 210.7318pt>
+<figures/ils_iqc_dist.pdf, id=524, 397.69139pt x 211.45325pt>
 File: figures/ils_iqc_dist.pdf Graphic file (type pdf)
 <use figures/ils_iqc_dist.pdf>
 Package pdftex.def Info: figures/ils_iqc_dist.pdf  used on input line 649.
-(pdftex.def)             Requested size: 360.0pt x 190.93983pt.
-<figures/ils_skewkurt.pdf, id=509, 311.40526pt x 236.79341pt>
+(pdftex.def)             Requested size: 360.0pt x 191.41284pt.
+<figures/ils_skewkurt.pdf, id=525, 311.68756pt x 237.07571pt>
 File: figures/ils_skewkurt.pdf Graphic file (type pdf)
 <use figures/ils_skewkurt.pdf>
 Package pdftex.def Info: figures/ils_skewkurt.pdf  used on input line 656.
-(pdftex.def)             Requested size: 237.60132pt x 180.68025pt.
+(pdftex.def)             Requested size: 237.60132pt x 180.73288pt.
 [22] [23 <./figures/ils_iqc_dist.pdf> <./figures/ils_skewkurt.pdf>] [24]
 (./ils_capitulo.aux)
  ***********
@@ -1014,10 +1014,10 @@ onts/type1/public/cm-super/sfrm1728.pfb><c:/texlive/2026/texmf-dist/fonts/type1
 /public/cm-super/sfti1095.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm
 -super/sftt0900.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sft
 t1095.pfb>
-Output written on ils_capitulo.pdf (24 pages, 532726 bytes).
+Output written on ils_capitulo.pdf (24 pages, 540546 bytes).
 PDF statistics:
- 733 PDF objects out of 1000 (max. 8388607)
- 461 compressed objects within 5 object streams
+ 755 PDF objects out of 1000 (max. 8388607)
+ 469 compressed objects within 5 object streams
  147 named destinations out of 1000 (max. 500000)
  262 words of extra memory for PDF output out of 10000 (max. 10000000)
 
