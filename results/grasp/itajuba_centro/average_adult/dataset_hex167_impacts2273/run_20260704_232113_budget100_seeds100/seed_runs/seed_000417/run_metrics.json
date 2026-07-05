@@ -1,0 +1,27 @@
+{
+  "seed": 417,
+  "initial_objective_value": 35.413,
+  "best_objective_value": 40.0084,
+  "delta_abs_vs_baseline": 14.596000000000004,
+  "delta_pct_vs_baseline": 57.43652704978674,
+  "iterations": 250,
+  "evaluations": 16947,
+  "runtime_seconds": 30.407386232167482,
+  "improvement_iterations": 9,
+  "stopping_reason": "max_no_improve",
+  "best_alpha": 0.9049152178584974,
+  "mean_rcl_size": 252.58356,
+  "construction_best_objective_value": 37.3282,
+  "profiling": {
+    "construction_total_s": 2.923793828114867,
+    "candidate_eval_total_s": 0.39229658246040344,
+    "local_search_total_s": 27.07668991200626,
+    "evaluation_build_final_matrix_s": 16.59676904603839,
+    "evaluation_objective_only_s": 9.082986652851105,
+    "evaluation_total_s": 25.679755698889494,
+    "evaluation_calls": 16947,
+    "local_search_calls": 250,
+    "total_runtime_s": 30.407386232167482,
+    "evaluation_avg_s": 0.0015152980290841739
+  }
+}

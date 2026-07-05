@@ -1,0 +1,40 @@
+======================================================================
+METAHEURISTIC OPTIMIZATION RUN REPORT
+======================================================================
+Run ID            : 27a9f939
+Timestamp (UTC)   : 2026-06-17T21:32:04.011310+00:00
+Location          : BK Avenida Paulista (key: av_paulista)
+Walking profile   : average_adult
+Method            : Greedy Randomized Adaptive Search Procedure (GRASP) (B)
+Status            : ok
+----------------------------------------------------------------------
+Budget (POIs)     : 100
+Seeds (restarts)  : 100   best seed: 3459
+Hexagons          : 177 (source: 177)
+Candidate dims    : 7 ['S_saude', 'S_educacao', 'S_abastecimento', 'S_lazer', 'S_servicos', 'T_transporte', 'U_urbanidade']
+----------------------------------------------------------------------
+OBJECTIVE (sum of IQC, maximize)
+  baseline        : 47.0577
+  best            : 53.9697
+  improvement     : 6.9120 (14.69%)
+----------------------------------------------------------------------
+OBJECTIVE ACROSS SEEDS
+  mean +/- std    : 52.8510 +/- 0.4107
+  min / max       : 51.7854 / 53.9697
+----------------------------------------------------------------------
+IQC DISTRIBUTION (optimized, per hexagon)
+  mean +/- std    : 0.3049 +/- 0.1475
+  min/median/max  : 0.0024 / 0.3020 / 0.7380
+  delta IQC mean  : 0.0391 (hexes improved: 155)
+----------------------------------------------------------------------
+PARAMETERS
+  rcl_alpha               : 0.2
+  construction_sample_size: 64
+  local_search_max_evals  : 4000
+  improvement_eps         : 1e-09
+  parallel_workers        : 79
+  eval_cache              : True
+----------------------------------------------------------------------
+Allocated POIs    : 100 in 66 (hex, dim) pairs
+Total runtime (s) : 39.612
+======================================================================
