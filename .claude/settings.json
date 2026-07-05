@@ -6,7 +6,8 @@
       "Bash(python \"C:/Users/ander/AppData/Local/Temp/claude/d--wqi-metaheuristics/6cb4f095-fb32-45c7-a35e-b75b011af99b/scratchpad/comp_stats.py\")",
       "Bash(python -m compileall -q scripts/generate_figures.py)",
       "Bash(pdflatex -interaction=nonstopmode -halt-on-error comparativo_ils_grasp.tex)",
-      "Bash(rm -f comp_build.log)"
+      "Bash(rm -f comp_build.log)",
+      "Bash(grep -n \"alpha_{20}\\\\|q_{h\\\\|x\\\\^{\\\\\\\\\\\\\\\\text{base\\\\|x\\\\^{\\\\\\\\\\\\\\\\text{final\\\\|r_{h,c}\\\\|w_c\\\\b\\\\|w_d\\\\b\\\\|\\\\\\\\\\\\\\\\max_d\\\\|IQC}_h\\\\|q_h/\" grasp_capitulo.tex ils_capitulo.tex comparativo_ils_grasp.tex)"
     ]
   }
 }

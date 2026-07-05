@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.21)  5 JUL 2026 14:13
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.21)  5 JUL 2026 15:33
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -817,21 +817,6 @@ Overfull \hbox (18.31688pt too wide) in paragraph at lines 154--155
 .95 metaheuristics/methods/grasp.py
  []
 
-
-Overfull \hbox (6.1246pt too wide) in paragraph at lines 158--159
-\T1/cmr/m/n/10.95 nhá-vel (IQC). São onze in-di-ca-do-res: \T1/cmtt/m/n/10.95 S
-_saude\T1/cmr/m/n/10.95 , \T1/cmtt/m/n/10.95 S_educacao\T1/cmr/m/n/10.95 , \T1/
-cmtt/m/n/10.95 S_abastecimento\T1/cmr/m/n/10.95 ,
- []
-
-
-Overfull \hbox (10.97585pt too wide) in paragraph at lines 158--159
-\T1/cmtt/m/n/10.95 S_lazer\T1/cmr/m/n/10.95 , \T1/cmtt/m/n/10.95 S_servicos\T1/
-cmr/m/n/10.95 , \T1/cmtt/m/n/10.95 I_seguranca\T1/cmr/m/n/10.95 , \T1/cmtt/m/n/
-10.95 A_vegetacao\T1/cmr/m/n/10.95 , \T1/cmtt/m/n/10.95 A_agua\T1/cmr/m/n/10.95
- , \T1/cmtt/m/n/10.95 C_conectividade\T1/cmr/m/n/10.95 ,
- []
-
 [6]
 Overfull \hbox (68.02902pt too wide) in alignment at lines 182--187
  [] [] [] 
@@ -888,11 +873,7 @@ Overfull \hbox (0.15213pt too wide) in paragraph at lines 413--414
 até \T1/cmtt/m/n/10.95 neighbor_sample
  []
 
-[14] [15] [16]
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-[17]
+[14] [15] [16] [17]
 Overfull \hbox (75.7972pt too wide) in paragraph at lines 549--559
  [][] 
  []
@@ -909,7 +890,7 @@ Overfull \hbox (10.27112pt too wide) in paragraph at lines 575--576
 0.95 (uma li-nha por ite-ra-ção), \T1/cmtt/m/n/10.95 best_allocation.csv
  []
 
-
+[19]
 Overfull \hbox (36.69164pt too wide) in paragraph at lines 577--578
 \T1/cmr/m/n/10.95 uma aná-lise. São exem-plos \T1/cmtt/m/n/10.95 seed\T1/cmr/m/
 n/10.95 , \T1/cmtt/m/n/10.95 best_objective_value\T1/cmr/m/n/10.95 , \T1/cmtt/m
@@ -923,7 +904,7 @@ Overfull \hbox (32.61586pt too wide) in paragraph at lines 577--578
 t/m/n/10.95 construction_sum_iqc
  []
 
-[19]
+
 Overfull \hbox (38.65587pt too wide) in paragraph at lines 587--601
  [][] 
  []
@@ -935,7 +916,7 @@ fa-tor de li-nha $[]\OT1/cmr/m/n/10.95 (\OML/cmm/m/it/10.95 h\OT1/cmr/m/n/10.95
  )$
  []
 
-[22]
+[22] [23]
 Overfull \hbox (135.21269pt too wide) in alignment at lines 644--649
  [] [] [] [] [] [] [] [] [] 
  []
@@ -950,43 +931,42 @@ Overfull \hbox (135.21269pt too wide) in alignment at lines 653--670
  [] [] [] [] [] [] [] [] [] 
  []
 
-[23]
-<figures/grasp_box_delta.pdf, id=459, 397.33067pt x 202.09717pt>
+<figures/grasp_box_delta.pdf, id=460, 397.33067pt x 202.09717pt>
 File: figures/grasp_box_delta.pdf Graphic file (type pdf)
 <use figures/grasp_box_delta.pdf>
 Package pdftex.def Info: figures/grasp_box_delta.pdf  used on input line 674.
 (pdftex.def)             Requested size: 360.0pt x 183.11618pt.
- [24]
-<figures/grasp_alpha.pdf, id=468, 425.63736pt x 217.72379pt>
+[24]
+<figures/grasp_alpha.pdf, id=470, 425.63736pt x 217.72379pt>
 File: figures/grasp_alpha.pdf Graphic file (type pdf)
 <use figures/grasp_alpha.pdf>
 Package pdftex.def Info: figures/grasp_alpha.pdf  used on input line 689.
 (pdftex.def)             Requested size: 360.0pt x 184.15247pt.
-
-Overfull \hbox (61.83784pt too wide) in alignment at lines 699--704
+ [25 <./figures/grasp_box_delta.pdf>]
+Overfull \hbox (63.51834pt too wide) in alignment at lines 699--704
  [] [] [] [] [] [] 
  []
 
 
-Overfull \hbox (61.83784pt too wide) in alignment at lines 704--708
+Overfull \hbox (63.51834pt too wide) in alignment at lines 704--708
  [] [] [] [] [] [] 
  []
 
 
-Overfull \hbox (61.83784pt too wide) in alignment at lines 708--725
+Overfull \hbox (63.51834pt too wide) in alignment at lines 708--725
  [] [] [] [] [] [] 
  []
 
-[25 <./figures/grasp_box_delta.pdf>]
-ignored: Infinite glue shrinkage found in box being 
-split [26 <./figures/grasp_alpha.pdf>]
-<figures/grasp_alpha_scatter.pdf, id=591, 397.69139pt x 212.17468pt>
+
+ignored: Infinite glue shrinkage found in box being split [26 <./figures/grasp_alpha.pdf
+>]
+<figures/grasp_alpha_scatter.pdf, id=594, 397.69139pt x 212.17468pt>
 File: figures/grasp_alpha_scatter.pdf Graphic file (type pdf)
 <use figures/grasp_alpha_scatter.pdf>
 Package pdftex.def Info: figures/grasp_alpha_scatter.pdf  used on input line 72
 9.
 (pdftex.def)             Requested size: 360.0pt x 192.06592pt.
-
+ [27 <./figures/grasp_alpha_scatter.pdf>]
 Overfull \hbox (160.18465pt too wide) in alignment at lines 739--744
  [] [] [] [] [] [] 
  []
@@ -1001,14 +981,13 @@ Overfull \hbox (160.18465pt too wide) in alignment at lines 748--765
  [] [] [] [] [] [] 
  []
 
-[27 <./figures/grasp_alpha_scatter.pdf>]
-<figures/grasp_constr_ls.pdf, id=657, 291.27383pt x 238.77531pt>
+<figures/grasp_constr_ls.pdf, id=659, 291.27383pt x 238.77531pt>
 File: figures/grasp_constr_ls.pdf Graphic file (type pdf)
 <use figures/grasp_constr_ls.pdf>
 Package pdftex.def Info: figures/grasp_constr_ls.pdf  used on input line 769.
 (pdftex.def)             Requested size: 223.19824pt x 182.97221pt.
- [28 <./figures/grasp_constr_ls.pdf>]
-<figures/grasp_convergence.pdf, id=704, 397.33067pt x 206.92357pt>
+[28]
+<figures/grasp_convergence.pdf, id=667, 397.33067pt x 206.92357pt>
 File: figures/grasp_convergence.pdf Graphic file (type pdf)
 <use figures/grasp_convergence.pdf>
 Package pdftex.def Info: figures/grasp_convergence.pdf  used on input line 788.
@@ -1019,7 +998,7 @@ Overfull \hbox (73.22601pt too wide) in paragraph at lines 798--806
  [][] 
  []
 
-[29]
+[29 <./figures/grasp_constr_ls.pdf>] [30 <./figures/grasp_convergence.pdf>]
 Overfull \hbox (13.3085pt too wide) in alignment at lines 818--823
  [] [] [] [] [] [] 
  []
@@ -1034,7 +1013,6 @@ Overfull \hbox (13.3085pt too wide) in alignment at lines 827--844
  [] [] [] [] [] [] 
  []
 
-[30 <./figures/grasp_convergence.pdf>]
 <figures/grasp_iqc_dist.pdf, id=766, 397.69139pt x 211.45325pt>
 File: figures/grasp_iqc_dist.pdf Graphic file (type pdf)
 <use figures/grasp_iqc_dist.pdf>
@@ -1045,8 +1023,8 @@ File: figures/grasp_skewkurt.pdf Graphic file (type pdf)
 <use figures/grasp_skewkurt.pdf>
 Package pdftex.def Info: figures/grasp_skewkurt.pdf  used on input line 855.
 (pdftex.def)             Requested size: 237.60132pt x 180.73288pt.
- [31] [32 <./figures/grasp_iqc_dist.pdf> <./figures/grasp_skewkurt.pdf>] [33] (
-./grasp_capitulo.aux)
+[31] [32 <./figures/grasp_iqc_dist.pdf> <./figures/grasp_skewkurt.pdf>]
+[33] (./grasp_capitulo.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
@@ -1055,39 +1033,41 @@ Package rerunfilecheck Info: File `grasp_capitulo.out' has not changed.
 (rerunfilecheck)             Checksum: 7F24514E9949F1E16C06476A0286AD8E;7891.
  ) 
 Here is how much of TeX's memory you used:
- 26137 strings out of 467525
- 480012 string characters out of 5423209
- 1418488 words of memory out of 5000000
- 54414 multiletter control sequences out of 15000+600000
- 648819 words of font info for 92 fonts, out of 8000000 for 9000
+ 26150 strings out of 467525
+ 480148 string characters out of 5423209
+ 1355754 words of memory out of 5000000
+ 54421 multiletter control sequences out of 15000+600000
+ 650982 words of font info for 99 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 84i,12n,94p,1598b,2203s stack positions out of 10000i,1000n,20000p,200000b,200000s
-<c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><c:/tex
-live/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><c:/texlive/2026
-/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb><c:/texlive/2026/texmf-di
-st/fonts/type1/public/amsfonts/cm/cmmi8.pfb><c:/texlive/2026/texmf-dist/fonts/t
-ype1/public/amsfonts/cm/cmr10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/publi
-c/amsfonts/cm/cmr8.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/
-cm/cmsy10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.
-pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb><c:/te
-xlive/2026/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb><c:/texliv
-e/2026/texmf-dist/fonts/type1/public/cm-super/sfbx0800.pfb><c:/texlive/2026/tex
-mf-dist/fonts/type1/public/cm-super/sfbx1095.pfb><c:/texlive/2026/texmf-dist/fo
-nts/type1/public/cm-super/sfbx1200.pfb><c:/texlive/2026/texmf-dist/fonts/type1/
-public/cm-super/sfbx1440.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-
-super/sfcc1095.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm
-0600.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm0800.pfb><
-c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm0900.pfb><c:/texlive
-/2026/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb><c:/texlive/2026/texm
-f-dist/fonts/type1/public/cm-super/sfrm1095.pfb><c:/texlive/2026/texmf-dist/fon
-ts/type1/public/cm-super/sfrm1728.pfb><c:/texlive/2026/texmf-dist/fonts/type1/p
-ublic/cm-super/sfti1095.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-s
-uper/sftt0900.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sftt1
-095.pfb>
-Output written on grasp_capitulo.pdf (33 pages, 792790 bytes).
+ 84i,10n,94p,1591b,2203s stack positions out of 10000i,1000n,20000p,200000b,200000s
+<c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb><c:/tex
+live/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><c:/texlive/2026
+/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><c:/texlive/2026/texmf-di
+st/fonts/type1/public/amsfonts/cm/cmmi12.pfb><c:/texlive/2026/texmf-dist/fonts/
+type1/public/amsfonts/cm/cmmi6.pfb><c:/texlive/2026/texmf-dist/fonts/type1/publ
+ic/amsfonts/cm/cmmi8.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfont
+s/cm/cmr10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.
+pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb><c:/t
+exlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb><c:/texlive/202
+6/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb><c:/texlive/2026/texmf-di
+st/fonts/type1/public/amsfonts/cm/cmsy8.pfb><c:/texlive/2026/texmf-dist/fonts/t
+ype1/public/amsfonts/symbols/msbm10.pfb><c:/texlive/2026/texmf-dist/fonts/type1
+/public/cm-super/sfbx0800.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm
+-super/sfbx1095.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfb
+x1200.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfbx1440.pfb>
+<c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfcc1095.pfb><c:/texliv
+e/2026/texmf-dist/fonts/type1/public/cm-super/sfrm0600.pfb><c:/texlive/2026/tex
+mf-dist/fonts/type1/public/cm-super/sfrm0800.pfb><c:/texlive/2026/texmf-dist/fo
+nts/type1/public/cm-super/sfrm0900.pfb><c:/texlive/2026/texmf-dist/fonts/type1/
+public/cm-super/sfrm1000.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-
+super/sfrm1095.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm
+1728.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfti1095.pfb><
+c:/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sftt0900.pfb><c:/texlive
+/2026/texmf-dist/fonts/type1/public/cm-super/sftt1095.pfb>
+Output written on grasp_capitulo.pdf (33 pages, 822455 bytes).
 PDF statistics:
- 1010 PDF objects out of 1200 (max. 8388607)
- 631 compressed objects within 7 object streams
+ 1025 PDF objects out of 1200 (max. 8388607)
+ 640 compressed objects within 7 object streams
  212 named destinations out of 1000 (max. 500000)
  336 words of extra memory for PDF output out of 10000 (max. 10000000)
 

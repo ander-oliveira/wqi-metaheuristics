@@ -25,11 +25,11 @@
 \newlabel{sec:grasp-projeto}{{2}{6}{GRASP no projeto}{section.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.1}O problema de otimização}{6}{subsection.2.1}\protected@file@percent }
 \newlabel{eq:alpha20}{{2}{6}{O problema de otimização}{equation.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Representação da solução e conjunto-base}{6}{subsection.2.2}\protected@file@percent }
 \gdef \LT@i {\LT@entry 
     {1}{74.28644pt}\LT@entry 
     {1}{131.50148pt}\LT@entry 
     {1}{222.2411pt}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Representação da solução e conjunto-base}{7}{subsection.2.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Glossário de variáveis}{7}{subsection.2.3}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {1}{Variáveis usadas na formulação e no código.}}{7}{table.1}\protected@file@percent }
 \newlabel{tab:glossario}{{1}{7}{Variáveis usadas na formulação e no código}{table.1}{}}
@@ -38,7 +38,7 @@
 \@writefile{lol}{\contentsline {lstlisting}{\numberline {1}Construção da matriz final e avaliação do objetivo.}{8}{lstlisting.1}\protected@file@percent }
 \newlabel{eq:final-matrix}{{3}{9}{A função objetivo compartilhada}{equation.3}{}}
 \newlabel{eq:objetivo}{{5}{9}{A função objetivo compartilhada}{equation.5}{}}
-\newlabel{eq:rcl-max}{{6}{9}{A função objetivo compartilhada}{equation.6}{}}
+\newlabel{eq:rcl-max}{{6}{10}{A função objetivo compartilhada}{equation.6}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.5}Por que a função objetivo não tem custo incremental barato}{10}{subsection.2.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.6}Pré-compilação do estado e do escore surrogate}{10}{subsection.2.6}\protected@file@percent }
 \newlabel{lst:surrogate}{{2}{10}{Pré-compilação do escore surrogate}{lstlisting.2}{}}
@@ -50,36 +50,35 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.8}Fase de busca local linha a linha}{13}{subsection.2.8}\protected@file@percent }
 \newlabel{lst:move}{{4}{13}{Sorteio de um movimento de realocação viável}{lstlisting.4}{}}
 \@writefile{lol}{\contentsline {lstlisting}{\numberline {4}Sorteio de um movimento de realocação viável.}{13}{lstlisting.4}\protected@file@percent }
-\newlabel{lst:ls}{{5}{13}{Busca local por primeira melhora}{lstlisting.5}{}}
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {5}Busca local por primeira melhora.}{13}{lstlisting.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.9}O laço GRASP por semente}{14}{subsection.2.9}\protected@file@percent }
-\@writefile{loa}{\contentsline {algorithm}{\numberline {3}{\ignorespaces GRASP implementado, por semente (maximização de $\DOTSB \sum@ \slimits@ \text  {IQC}$)}}{15}{algorithm.3}\protected@file@percent }
+\newlabel{lst:ls}{{5}{14}{Busca local por primeira melhora}{lstlisting.5}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {5}Busca local por primeira melhora.}{14}{lstlisting.5}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {3}{\ignorespaces GRASP implementado, por semente (maximização de $\overline  {\mathrm  {IQC}}$)}}{15}{algorithm.3}\protected@file@percent }
 \newlabel{alg:grasp-impl}{{3}{15}{O laço GRASP por semente}{algorithm.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.10}Fluxo de execução}{15}{subsection.2.10}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Fluxo de uma execução GRASP por semente, como implementado. Cada volta do laço é uma iteração independente: sorteio de $\alpha $, construção, avaliação, busca local e atualização da melhor solução.}}{16}{figure.1}\protected@file@percent }
-\newlabel{fig:grasp-fluxo}{{1}{16}{Fluxo de uma execução GRASP por semente, como implementado. Cada volta do laço é uma iteração independente: sorteio de $\alpha $, construção, avaliação, busca local e atualização da melhor solução}{figure.1}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Anatomia de uma iteração GRASP sob a ótica do orçamento. A construção usa apenas o escore surrogate, sem chamar a função objetivo; o custo em avaliações concentra-se na busca local. As frações de tempo vêm dos registros de perfil das execuções.}}{16}{figure.2}\protected@file@percent }
-\newlabel{fig:grasp-anatomia}{{2}{16}{Anatomia de uma iteração GRASP sob a ótica do orçamento. A construção usa apenas o escore surrogate, sem chamar a função objetivo; o custo em avaliações concentra-se na busca local. As frações de tempo vêm dos registros de perfil das execuções}{figure.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.11}Sementes, reprodutibilidade e paralelismo}{17}{subsection.2.11}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.12}Contabilização de avaliações e comparabilidade com o ILS}{17}{subsection.2.12}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.13}Exemplo de execução passo a passo}{17}{subsection.2.13}\protected@file@percent }
-\newlabel{sec:exemplo}{{2.13}{17}{Exemplo de execução passo a passo}{subsection.2.13}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Matriz de base $x^{\text  {base}}$ do exemplo.}}{18}{table.2}\protected@file@percent }
-\newlabel{tab:toy-base}{{2}{18}{Matriz de base $x^{\text {base}}$ do exemplo}{table.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.9}O laço GRASP por semente}{15}{subsection.2.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.10}Fluxo de execução}{16}{subsection.2.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.11}Sementes, reprodutibilidade e paralelismo}{16}{subsection.2.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.12}Contabilização de avaliações e comparabilidade com o ILS}{16}{subsection.2.12}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Fluxo de uma execução GRASP por semente, como implementado. Cada volta do laço é uma iteração independente: sorteio de $\alpha $, construção, avaliação, busca local e atualização da melhor solução.}}{17}{figure.1}\protected@file@percent }
+\newlabel{fig:grasp-fluxo}{{1}{17}{Fluxo de uma execução GRASP por semente, como implementado. Cada volta do laço é uma iteração independente: sorteio de $\alpha $, construção, avaliação, busca local e atualização da melhor solução}{figure.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Anatomia de uma iteração GRASP sob a ótica do orçamento. A construção usa apenas o escore surrogate, sem chamar a função objetivo; o custo em avaliações concentra-se na busca local. As frações de tempo vêm dos registros de perfil das execuções.}}{17}{figure.2}\protected@file@percent }
+\newlabel{fig:grasp-anatomia}{{2}{17}{Anatomia de uma iteração GRASP sob a ótica do orçamento. A construção usa apenas o escore surrogate, sem chamar a função objetivo; o custo em avaliações concentra-se na busca local. As frações de tempo vêm dos registros de perfil das execuções}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.13}Exemplo de execução passo a passo}{18}{subsection.2.13}\protected@file@percent }
+\newlabel{sec:exemplo}{{2.13}{18}{Exemplo de execução passo a passo}{subsection.2.13}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Matriz de oferta de base $S_{i,j}$ do exemplo.}}{18}{table.2}\protected@file@percent }
+\newlabel{tab:toy-base}{{2}{18}{Matriz de oferta de base $S_{i,j}$ do exemplo}{table.2}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Passos da construção no exemplo ($\alpha = 0{,}5$).}}{18}{table.3}\protected@file@percent }
 \newlabel{tab:toy-step}{{3}{18}{Passos da construção no exemplo ($\alpha = 0{,}5$)}{table.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.14}Artefatos de saída e registros}{19}{subsection.2.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.14}Artefatos de saída e registros}{20}{subsection.2.14}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.15}Parâmetros e configuração}{20}{subsection.2.15}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Parâmetros da implementação do GRASP.}}{20}{table.4}\protected@file@percent }
 \newlabel{tab:parametros}{{4}{20}{Parâmetros da implementação do GRASP}{table.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.16}Discussão dos valores dos parâmetros}{20}{subsection.2.16}\protected@file@percent }
-\newlabel{sec:grasp-parametros}{{2.16}{20}{Discussão dos valores dos parâmetros}{subsection.2.16}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.16}Discussão dos valores dos parâmetros}{21}{subsection.2.16}\protected@file@percent }
+\newlabel{sec:grasp-parametros}{{2.16}{21}{Discussão dos valores dos parâmetros}{subsection.2.16}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.17}Limitações e decisões de projeto}{22}{subsection.2.17}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}Análise dos resultados}{22}{section.3}\protected@file@percent }
-\newlabel{sec:grasp-analise}{{3}{22}{Análise dos resultados}{section.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Desenho experimental}{22}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Análise dos resultados}{23}{section.3}\protected@file@percent }
+\newlabel{sec:grasp-analise}{{3}{23}{Análise dos resultados}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Desenho experimental}{23}{subsection.3.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Metodologia estatística}{23}{subsection.3.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Resultados descritivos}{23}{subsection.3.3}\protected@file@percent }
 \gdef \LT@ii {\LT@entry 
     {3}{87.11127pt}\LT@entry 
     {3}{80.65555pt}\LT@entry 
@@ -90,6 +89,7 @@
     {1}{50.45355pt}\LT@entry 
     {1}{37.09355pt}\LT@entry 
     {1}{65.27509pt}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Resultados descritivos}{24}{subsection.3.3}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {5}{Estatísticas descritivas do GRASP por instância ($100$ sementes). Valores em soma de IQC; $\Delta $IQC\% é a melhoria média sobre a base; CV\% é o coeficiente de variação; tempo em segundos.}}{24}{table.5}\protected@file@percent }
 \newlabel{tab:grasp-desc}{{5}{24}{Estatísticas descritivas do GRASP por instância ($100$ sementes). Valores em soma de IQC; $\Delta $IQC\% é a melhoria média sobre a base; CV\% é o coeficiente de variação; tempo em segundos}{table.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Comportamento do parâmetro $\alpha $}{24}{subsection.3.4}\protected@file@percent }
@@ -100,7 +100,7 @@
     {3}{80.65555pt}\LT@entry 
     {1}{55.33945pt}\LT@entry 
     {1}{52.82468pt}\LT@entry 
-    {1}{58.40959pt}\LT@entry 
+    {1}{60.09009pt}\LT@entry 
     {3}{87.49731pt}}
 \@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces À esquerda, distribuição agregada do $\alpha $ da melhor iteração nas $1\,500$ execuções, com a referência uniforme tracejada; a uniformidade é rejeitada por Kolmogorov--Smirnov ($p \approx 10^{-30}$). À direita, média por instância com intervalo de confiança de $95\%$: o melhor $\alpha $ varia de $0{,}15$ a $0{,}87$ conforme a instância.}}{26}{figure.4}\protected@file@percent }
 \newlabel{fig:grasp-alpha}{{4}{26}{À esquerda, distribuição agregada do $\alpha $ da melhor iteração nas $1\,500$ execuções, com a referência uniforme tracejada; a uniformidade é rejeitada por Kolmogorov--Smirnov ($p \approx 10^{-30}$). À direita, média por instância com intervalo de confiança de $95\%$: o melhor $\alpha $ varia de $0{,}15$ a $0{,}87$ conforme a instância}{figure.4}{}}
@@ -118,16 +118,16 @@
     {1}{88.86493pt}}
 \@writefile{lot}{\contentsline {table}{\numberline {7}{Decomposição do ganho entre construção e busca local (médias sobre $100$ sementes, em soma de IQC). A última coluna é a fração do ganho total sobre a base devida à busca local.}}{28}{table.7}\protected@file@percent }
 \newlabel{tab:grasp-constr}{{7}{28}{Decomposição do ganho entre construção e busca local (médias sobre $100$ sementes, em soma de IQC). A última coluna é a fração do ganho total sobre a base devida à busca local}{table.7}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Valor da solução construída contra o valor após a busca local, por iteração ($30$ sementes de Ana Rosa / adulto). Nenhum ponto fica abaixo da reta identidade: a busca local por primeira melhora nunca piora a solução.}}{28}{figure.6}\protected@file@percent }
-\newlabel{fig:grasp-constr-ls}{{6}{28}{Valor da solução construída contra o valor após a busca local, por iteração ($30$ sementes de Ana Rosa / adulto). Nenhum ponto fica abaixo da reta identidade: a busca local por primeira melhora nunca piora a solução}{figure.6}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}Critério de parada e custo computacional}{29}{subsection.3.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}Critério de parada e custo computacional}{28}{subsection.3.6}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Valor da solução construída contra o valor após a busca local, por iteração ($30$ sementes de Ana Rosa / adulto). Nenhum ponto fica abaixo da reta identidade: a busca local por primeira melhora nunca piora a solução.}}{29}{figure.6}\protected@file@percent }
+\newlabel{fig:grasp-constr-ls}{{6}{29}{Valor da solução construída contra o valor após a busca local, por iteração ($30$ sementes de Ana Rosa / adulto). Nenhum ponto fica abaixo da reta identidade: a busca local por primeira melhora nunca piora a solução}{figure.6}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.7}Convergência}{29}{subsection.3.7}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Convergência: média do melhor valor por número de avaliações, e fração da melhoria total (entre parênteses).}}{29}{table.8}\protected@file@percent }
-\newlabel{tab:grasp-conv}{{8}{29}{Convergência: média do melhor valor por número de avaliações, e fração da melhoria total (entre parênteses)}{table.8}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.8}Distribuição do IQC por hexágono: assimetria e curtose}{29}{subsection.3.8}\protected@file@percent }
 \newlabel{sec:grasp-iqc-shape}{{3.8}{29}{Distribuição do IQC por hexágono: assimetria e curtose}{subsection.3.8}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Convergência do GRASP: média, sobre as $100$ sementes, do melhor valor em função do número de avaliações (linha) e faixa interquartílica (área sombreada), em escala logarítmica de avaliações.}}{30}{figure.7}\protected@file@percent }
 \newlabel{fig:grasp-conv}{{7}{30}{Convergência do GRASP: média, sobre as $100$ sementes, do melhor valor em função do número de avaliações (linha) e faixa interquartílica (área sombreada), em escala logarítmica de avaliações}{figure.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Convergência: média do melhor valor por número de avaliações, e fração da melhoria total (entre parênteses).}}{30}{table.8}\protected@file@percent }
+\newlabel{tab:grasp-conv}{{8}{30}{Convergência: média do melhor valor por número de avaliações, e fração da melhoria total (entre parênteses)}{table.8}{}}
 \gdef \LT@v {\LT@entry 
     {3}{87.11127pt}\LT@entry 
     {3}{80.65555pt}\LT@entry 
@@ -137,10 +137,10 @@
     {1}{49.60739pt}}
 \@writefile{lot}{\contentsline {table}{\numberline {9}{Assimetria ($g_1$) e excesso de curtose ($g_2$) da distribuição do IQC por hexágono, antes e depois da melhor alocação do GRASP. O símbolo $^{\dagger }$ marca valores significativamente diferentes de zero pelo teste de D'Agostino ao nível de $5\%$.}}{31}{table.9}\protected@file@percent }
 \newlabel{tab:grasp-shape}{{9}{31}{Assimetria ($g_1$) e excesso de curtose ($g_2$) da distribuição do IQC por hexágono, antes e depois da melhor alocação do GRASP. O símbolo $^{\dagger }$ marca valores significativamente diferentes de zero pelo teste de D'Agostino ao nível de $5\%$}{table.9}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.9}Síntese}{31}{subsection.3.9}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Distribuição do IQC por hexágono antes (cinza) e depois (azul) da melhor alocação do GRASP, nas duas instâncias representativas, com $g_1$ e $g_2$ anotados. Em Itajubá a cauda baixa esvazia e a distribuição se espalha para a direita; em Milão, já simétrica, a mudança é pequena.}}{32}{figure.8}\protected@file@percent }
 \newlabel{fig:grasp-iqc-dist}{{8}{32}{Distribuição do IQC por hexágono antes (cinza) e depois (azul) da melhor alocação do GRASP, nas duas instâncias representativas, com $g_1$ e $g_2$ anotados. Em Itajubá a cauda baixa esvazia e a distribuição se espalha para a direita; em Milão, já simétrica, a mudança é pequena}{figure.8}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Migração das quinze instâncias no plano assimetria $\times $ excesso de curtose, da distribuição de base (círculos vazios) para a distribuição após a melhor alocação do GRASP (círculos cheios). O movimento predominante é para a esquerda e para baixo: distribuições mais simétricas e menos concentradas.}}{32}{figure.9}\protected@file@percent }
 \newlabel{fig:grasp-skewkurt}{{9}{32}{Migração das quinze instâncias no plano assimetria $\times $ excesso de curtose, da distribuição de base (círculos vazios) para a distribuição após a melhor alocação do GRASP (círculos cheios). O movimento predominante é para a esquerda e para baixo: distribuições mais simétricas e menos concentradas}{figure.9}{}}
 \bibcite{resendeRibeiro2008}{1}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.9}Síntese}{33}{subsection.3.9}\protected@file@percent }
 \gdef \@abspage@last{33}

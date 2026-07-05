@@ -155,24 +155,24 @@ Esta seção relaciona o método descrito na Seção~\ref{sec:grasp-teoria} com 
 
 \subsection{O problema de otimização}
 
-O projeto calcula, para cada hexágono H3 de uma região, um conjunto de indicadores de caminhabilidade e, a partir deles, o Índice de Qualidade Caminhável (IQC). São onze indicadores: \code{S\_saude}, \code{S\_educacao}, \code{S\_abastecimento}, \code{S\_lazer}, \code{S\_servicos}, \code{I\_seguranca}, \code{A\_vegetacao}, \code{A\_agua}, \code{C\_conectividade}, \code{T\_transporte} e \code{U\_urbanidade}. O IQC de um hexágono é uma agregação ponderada desses indicadores, com pesos obtidos pelo método CRITIC.
+O projeto calcula, para cada hexágono H3 de uma região, um conjunto de indicadores de caminhabilidade e, a partir deles, o Índice de Qualidade Caminhável (IQC). A área de estudo é discretizada no conjunto de hexágonos $\mathcal{H} = \{h_1, h_2, \dots, h_{|\mathcal{H}|}\}$, e as dimensões formam o conjunto $\mathcal{K}$, com $|\mathcal{K}| = 11$: \code{S\_saude}, \code{S\_educacao}, \code{S\_abastecimento}, \code{S\_lazer}, \code{S\_servicos}, \code{I\_seguranca}, \code{A\_vegetacao}, \code{A\_agua}, \code{C\_conectividade}, \code{T\_transporte} e \code{U\_urbanidade}. O IQC de um hexágono é uma agregação ponderada dos indicadores, com pesos $w_j$ obtidos pelo método CRITIC.
 
-A otimização consiste em alocar um orçamento fixo de pontos de interesse (POIs) na região, com o objetivo de maximizar a soma do IQC sobre todos os hexágonos. Os POIs só podem ser inseridos em sete das onze dimensões, aquelas que representam equipamentos passíveis de instalação: \code{S\_saude}, \code{S\_educacao}, \code{S\_abastecimento}, \code{S\_lazer}, \code{S\_servicos}, \code{T\_transporte} e \code{U\_urbanidade}. Um POI inserido em um hexágono de origem não afeta apenas aquele hexágono: seu efeito se propaga para hexágonos de destino segundo um modelo de impacto temporal. Cada par origem--destino tem um peso $\alpha_{20}$ derivado do tempo de caminhada entre eles, por um decaimento em cosseno,
+A otimização consiste em alocar um orçamento fixo $B$ de pontos de interesse (POIs) na região, com o objetivo de maximizar a soma do IQC sobre todos os hexágonos. Os POIs só podem ser inseridos no subconjunto de dimensões instaláveis $\mathcal{K}_{POI} \subset \mathcal{K}$, com $|\mathcal{K}_{POI}| = 7$: \code{S\_saude}, \code{S\_educacao}, \code{S\_abastecimento}, \code{S\_lazer}, \code{S\_servicos}, \code{T\_transporte} e \code{U\_urbanidade}. Um POI inserido em um hexágono de origem não afeta apenas aquele hexágono: seu efeito se propaga para os hexágonos de destino segundo um modelo de impacto temporal. Cada par origem--destino tem um peso $\phi(t_{i',i})$ derivado do tempo de caminhada $t_{i',i}$ entre eles, por um decaimento em cosseno,
 \begin{equation}
-\alpha_{20}(t) =
+\phi(t) =
 \begin{cases}
-\dfrac{1 + \cos\!\left(\pi\,t/20\right)}{2}, & 0 \le t \le 20,\\[2mm]
+\dfrac{1 + \cos\!\left(\pi\,t/t_{max}\right)}{2}, & 0 \le t \le t_{max},\\[2mm]
 0, & \text{caso contrário},
 \end{cases}
 \label{eq:alpha20}
 \end{equation}
-sendo $t$ o tempo de caminhada em minutos. Assim, inserir um POI perto de muitos destinos alcançáveis rende mais do que inseri-lo em um ponto isolado. O orçamento adotado é de $100$ POIs, e o valor da soma do IQC sem nenhuma alocação é a linha de base (\emph{baseline}) usada para medir o ganho.
+com $t_{max} = 20$ minutos ($\phi$ corresponde à coluna \code{alpha\_20} dos dados). Assim, inserir um POI perto de muitos destinos alcançáveis rende mais do que inseri-lo em um ponto isolado. O orçamento adotado é $B = 100$ POIs, e a soma do IQC sem nenhuma alocação é a linha de base (\emph{baseline}) usada para medir o ganho.
 
 \subsection{Representação da solução e conjunto-base}
 
-A correspondência com a teoria começa na definição do conjunto-base. Um elemento do conjunto-base $E$ é a inserção de uma unidade de POI em um par (hexágono de origem, dimensão). Uma solução é uma matriz de inteiros não negativos, com uma linha por hexágono e uma coluna por dimensão de POI, cujos valores somam o orçamento e são não nulos apenas nas linhas correspondentes a hexágonos de origem elegíveis. Cada unidade alocada é, portanto, um elemento incorporado à solução.
+A correspondência com a teoria começa na definição do conjunto-base. Um elemento do conjunto-base $E$ é a inserção de uma unidade de POI em um par (hexágono de origem $h_i$, dimensão $j$). Uma solução é a matriz $\mathbf{\Delta X}$, de dimensão $|\mathcal{H}| \times |\mathcal{K}_{POI}|$, em que cada entrada $\Delta x_{i,j} \in \mathbb{Z}_{\ge 0}$ é a quantidade de POIs da dimensão $j$ alocada no hexágono $h_i$; as entradas somam o orçamento, $\sum_{i}\sum_{j} \Delta x_{i,j} = B$, e são não nulas apenas nas linhas correspondentes a hexágonos de origem elegíveis. Cada unidade alocada é, portanto, um elemento incorporado à solução.
 
-Sob essa representação, o orçamento coincide com o número de passos da construção: como cada passo insere uma unidade de POI, toda solução construída tem exatamente $100$ POIs. Essa escolha mantém a solução dentro do mesmo espaço de busca usado pelo ILS e preserva a mesma invariante de conservação de orçamento, o que é necessário para que a comparação entre os dois métodos seja feita sobre o mesmo conjunto de soluções viáveis.
+Sob essa representação, o orçamento coincide com o número de passos da construção: como cada passo insere uma unidade de POI, toda solução construída tem exatamente $B = 100$ POIs. Essa escolha mantém a solução dentro do mesmo espaço de busca usado pelo ILS e preserva a mesma invariante de conservação de orçamento, o que é necessário para que a comparação entre os dois métodos seja feita sobre o mesmo conjunto de soluções viáveis.
 
 \subsection{Glossário de variáveis}
 
@@ -189,25 +189,25 @@ Símbolo & Nome no código & Significado \\
 Símbolo & Nome no código & Significado \\
 \midrule
 \endhead
-$E$ & --- & conjunto-base; pares (origem, dimensão) \\
+$E$ & --- & conjunto-base; pares (origem $h_i$, dimensão $j$) \\
 $S$, $S^\ast$ & --- & solução corrente e melhor solução \\
-$f(S)$ & \code{objective\_value} & soma do IQC da solução \\
+$F(\mathbf{\Delta X})$ & \code{objective\_value} & aptidão; $\overline{\mathrm{IQC}}$, soma do IQC da solução \\
 $B$ & \code{budget} & orçamento; número de POIs a alocar ($100$) \\
-$H$ & \code{h3\_ids}, \code{n\_hex} & lista de hexágonos e sua quantidade \\
-$D$ & \code{candidate\_dimensions}, \code{n\_dims} & dimensões de POI (sete) \\
---- & \code{indicator\_columns} & os onze indicadores usados no IQC \\
+$\mathcal{H}$, $|\mathcal{H}|$ & \code{h3\_ids}, \code{n\_hex} & conjunto de hexágonos e sua quantidade \\
+$\mathcal{K}_{POI}$ & \code{candidate\_dimensions}, \code{n\_dims} & dimensões instaláveis de POI (sete) \\
+$\mathcal{K}$ & \code{indicator\_columns} & os onze indicadores usados no IQC \\
 --- & \code{candidate\_to\_indicator\_indices} (\code{cols}) & para cada dimensão de POI, o índice da coluna de indicador correspondente \\
-$x^{\text{base}}$ & \code{baseline\_matrix} & matriz de indicadores de base ($n\_hex \times 11$) \\
-$x^{\text{final}}$ & \code{final\_matrix} & matriz de indicadores após aplicar o impacto da alocação \\
-$q_{h,d}$ & \code{candidate\_matrix} (\code{cand}) & solução; quantidade de POIs na origem $h$, dimensão $d$ \\
-$\alpha_{20}(h,t)$ & \code{alpha\_values} & peso de impacto do par origem $h$ / destino $t$ \\
+$S_{i,j}$ & \code{baseline\_matrix} & oferta de base ($|\mathcal{H}| \times 11$) \\
+$S^s_{i,j}(\mathbf{\Delta X})$ & \code{final\_matrix} & oferta após aplicar o impacto da alocação \\
+$\Delta x_{i,j}$, $\mathbf{\Delta X}$ & \code{candidate\_matrix} (\code{cand}) & solução; quantidade de POIs no hexágono $h_i$, dimensão $j$ \\
+$\phi(t_{i',i})$ & \code{alpha\_values} & peso de impacto do par origem $h_{i'}$ / destino $h_i$ \\
 --- & \code{source\_indices}, \code{target\_indices} & índices de origem e destino de cada par de impacto \\
 --- & \code{allowed\_source\_rows} & linhas (hexágonos) elegíveis a receber POI \\
-$\text{alcance}(h)$ & \code{reach\_row} & soma dos pesos de impacto que saem de $h$ \\
-$w_d$ & \code{base\_weights} & peso CRITIC da dimensão $d$ \\
-$\min_d,\max_d$ & \code{col\_min}, \code{col\_max} & mínimo e máximo da coluna $d$ na matriz corrente \\
---- & \code{range\_safe} & faixa $\max_d-\min_d$, com piso para evitar divisão por zero \\
---- & \code{col\_factor} & fator de coluna $w_d/(\max_d-\min_d)$ \\
+$\text{alcance}(i)$ & \code{reach\_row} & soma dos pesos de impacto que saem de $h_i$ \\
+$w_j$ & \code{base\_weights} & peso CRITIC da dimensão $j$ \\
+$\min_j,\max_j$ & \code{col\_min}, \code{col\_max} & mínimo e máximo da coluna $j$ na matriz corrente \\
+--- & \code{range\_safe} & faixa $\max_j-\min_j$, com piso para evitar divisão por zero \\
+--- & \code{col\_factor} & fator de coluna $w_j/(\max_j-\min_j)$ \\
 --- & \code{score\_grid} & escore surrogate por (origem elegível, dimensão) \\
 $\alpha$ & \code{alpha} & parâmetro de limiar da RCL \\
 --- & \code{threshold} & limiar de corte da RCL \\
@@ -245,27 +245,27 @@ def objective_function(final_indicator_matrix):
     return {"objective_value": objective_value, ...}
 \end{lstlisting}
 
-Explicando a Listagem~\ref{lst:objetivo} linha a linha. A linha~4 seleciona, para cada par de impacto, a linha da alocação correspondente ao hexágono de origem daquele par. A linha~5 multiplica cada uma dessas linhas pelo peso $\alpha_{20}$ do par, o que dá a contribuição que sai de cada origem para o respectivo destino. A linha~6 cria uma matriz de deltas por destino, zerada. A linha~7 soma, em cada destino, as contribuições vindas de todas as origens que o alcançam; a função \code{np.add.at} faz essa soma acumulando corretamente quando vários pares apontam para o mesmo destino. A linha~8 copia a matriz de base, e a linha~9 soma os deltas nas colunas de indicador que correspondem às dimensões de POI. O resultado é a Equação~\eqref{eq:final-matrix}:
+Explicando a Listagem~\ref{lst:objetivo} linha a linha. A linha~4 seleciona, para cada par de impacto, a linha da alocação correspondente ao hexágono de origem daquele par. A linha~5 multiplica cada uma dessas linhas pelo peso $\phi$ do par, o que dá a contribuição que sai de cada origem para o respectivo destino. A linha~6 cria uma matriz de deltas por destino, zerada. A linha~7 soma, em cada destino, as contribuições vindas de todas as origens que o alcançam; a função \code{np.add.at} faz essa soma acumulando corretamente quando vários pares apontam para o mesmo destino. A linha~8 copia a matriz de base, e a linha~9 soma os deltas nas colunas de indicador que correspondem às dimensões de POI. O resultado é a Equação~\eqref{eq:final-matrix}, em que $\mathcal{N}_i$ é o conjunto de origens que alcançam o hexágono $h_i$ dentro de $t_{max}$:
 \begin{equation}
-x^{\text{final}}_{t,c} = x^{\text{base}}_{t,c} + \sum_{h} \alpha_{20}(h,t)\; q_{h,c}.
+S^{s}_{i,j}(\mathbf{\Delta X}) = S_{i,j} + \sum_{h_{i'} \in \mathcal{N}_i} \phi(t_{i',i})\; \Delta x_{i',j}.
 \label{eq:final-matrix}
 \end{equation}
 Na segunda função, a linha~13 recalcula os pesos CRITIC sobre a matriz final, a linha~14 recalcula o IQC de cada hexágono e a linha~15 soma esses valores para obter o objetivo.
 
 A normalização usada no IQC é min--max por coluna,
 \begin{equation}
-r_{h,c} =
+\hat{S}^{s}_{i,j} =
 \begin{cases}
-\dfrac{x^{\text{final}}_{h,c} - \min_c}{\max_c - \min_c}, & \max_c > \min_c,\\[2mm]
-0{,}5, & \max_c = \min_c,
+\dfrac{S^{s}_{i,j} - \min_j}{\max_j - \min_j}, & \max_j > \min_j,\\[2mm]
+0{,}5, & \max_j = \min_j,
 \end{cases}
 \end{equation}
-e o IQC de um hexágono é a soma ponderada $\text{IQC}_h = \sum_c w_c\, r_{h,c}$, arredondada a quatro casas decimais. O objetivo é
+e o IQC de um hexágono é a soma ponderada $\mathrm{IQC}_i = \sum_{j \in \mathcal{K}} w_j\, \hat{S}^{s}_{i,j}$, arredondada a quatro casas decimais. A aptidão de uma solução é o IQC global,
 \begin{equation}
-f(S) = \sum_h \text{IQC}_h,
+F(\mathbf{\Delta X}) = \overline{\mathrm{IQC}}(\mathbf{\Delta X}) = \sum_{i \in \mathcal{H}} \mathrm{IQC}_i,
 \label{eq:objetivo}
 \end{equation}
-a ser maximizado. Os pesos $w_c$ vêm do CRITIC: para cada coluna calcula-se o desvio padrão da coluna normalizada, $\sigma_c$, e uma medida de conflito $\sum_{j}\bigl(1 - |\rho_{c,j}|\bigr)$, com $\rho_{c,j}$ a correlação entre as colunas $c$ e $j$; o produto $\sigma_c \sum_{j}(1-|\rho_{c,j}|)$ é normalizado para somar um.
+a ser maximizada; nas descrições dos algoritmos, $F(S)$ denota a aptidão da solução corrente $S = \mathbf{\Delta X}$. Os pesos $w_j$ vêm do CRITIC: para cada coluna calcula-se o desvio padrão da coluna normalizada, $\sigma_j$, e uma medida de conflito $\sum_{j'}\bigl(1 - |\rho_{j,j'}|\bigr)$, com $\rho_{j,j'}$ a correlação entre as colunas $j$ e $j'$; o produto $\sigma_j \sum_{j'}(1-|\rho_{j,j'}|)$ é normalizado para somar um.
 
 Como a função é de maximização, a RCL correspondente à Equação~\eqref{eq:rcl-min} passa a selecionar os elementos de maior ganho. Se $g(e)$ é o ganho de incorporar o elemento $e$, e $g^{\max}$ e $g^{\min}$ são o maior e o menor ganhos entre os candidatos, a RCL usada é
 \begin{equation}
@@ -275,7 +275,7 @@ Como a função é de maximização, a RCL correspondente à Equação~\eqref{eq
 
 \subsection{Por que a função objetivo não tem custo incremental barato}
 
-A teoria do Algoritmo~\ref{alg:construcao} pressupõe que se possa avaliar o custo (ou ganho) incremental de cada candidato a cada passo. No caso do IQC isso é caro. O problema está no CRITIC e na normalização: os pesos $w_c$ dependem do desvio padrão e das correlações de todas as colunas, e a normalização depende do mínimo e do máximo de cada coluna. Inserir uma única unidade de POI altera muitos hexágonos de destino, o que muda as estatísticas das colunas e, com elas, os pesos. O efeito marginal de um elemento não é independente do restante da solução, ou seja, a função objetivo é não separável.
+A teoria do Algoritmo~\ref{alg:construcao} pressupõe que se possa avaliar o custo (ou ganho) incremental de cada candidato a cada passo. No caso do IQC isso é caro. O problema está no CRITIC e na normalização: os pesos $w_j$ dependem do desvio padrão e das correlações de todas as colunas, e a normalização depende do mínimo e do máximo de cada coluna. Inserir uma única unidade de POI altera muitos hexágonos de destino, o que muda as estatísticas das colunas e, com elas, os pesos. O efeito marginal de um elemento não é independente do restante da solução, ou seja, a função objetivo é não separável.
 
 Na prática, calcular o ganho exato de cada candidato exigiria uma avaliação completa da Equação~\eqref{eq:objetivo} por candidato, a cada passo da construção. O número de candidatos é da ordem de (número de hexágonos de origem) $\times\,7$ dimensões, o que dá aproximadamente mil e duzentos candidatos em uma região típica. Uma construção gulosa exata custaria, então, cerca de $100 \times 1200 = 120\,000$ avaliações para montar uma única solução, mais do que o orçamento total de avaliações de uma execução inteira do ILS. Isso inviabiliza a construção gulosa exata para um método genuinamente multi-start, que precisa montar muitas soluções.
 
@@ -305,7 +305,7 @@ def _build_construction_surrogate(state):
     return base_weights, reach_row, source_targets, source_alphas
 \end{lstlisting}
 
-Linha a linha da Listagem~\ref{lst:surrogate}. A linha~4 calcula os pesos CRITIC da solução vazia, ou seja, sobre a matriz de base; esse cálculo é numérico e não conta como avaliação da função objetivo. A linha~5 seleciona, entre esses pesos, apenas os das sete dimensões de POI, guardando-os em \code{base\_weights}. As linhas~6 e~7 calculam o alcance de cada hexágono, somando os pesos $\alpha_{20}$ de todos os pares de impacto que partem daquele hexágono; \code{np.add.at} acumula por índice de origem. As linhas~8 a~11 ordenam os pares de impacto por origem, para poder agrupá-los. As linhas~12 a~18 constroem, para cada origem, a lista dos seus destinos e a lista dos pesos correspondentes, guardadas em \code{source\_targets} e \code{source\_alphas}. Esses dois dicionários permitem, durante a construção, atualizar a matriz final de forma incremental sem varrer todos os pares. A linha~19 devolve os quatro objetos precompilados. Como toda construção começa da solução vazia, \code{base\_weights} e \code{reach\_row} são constantes ao longo de toda a execução e por isso são calculados uma única vez.
+Linha a linha da Listagem~\ref{lst:surrogate}. A linha~4 calcula os pesos CRITIC da solução vazia, ou seja, sobre a matriz de base; esse cálculo é numérico e não conta como avaliação da função objetivo. A linha~5 seleciona, entre esses pesos, apenas os das sete dimensões de POI, guardando-os em \code{base\_weights}. As linhas~6 e~7 calculam o alcance de cada hexágono, somando os pesos $\phi$ de todos os pares de impacto que partem daquele hexágono; \code{np.add.at} acumula por índice de origem. As linhas~8 a~11 ordenam os pares de impacto por origem, para poder agrupá-los. As linhas~12 a~18 constroem, para cada origem, a lista dos seus destinos e a lista dos pesos correspondentes, guardadas em \code{source\_targets} e \code{source\_alphas}. Esses dois dicionários permitem, durante a construção, atualizar a matriz final de forma incremental sem varrer todos os pares. A linha~19 devolve os quatro objetos precompilados. Como toda construção começa da solução vazia, \code{base\_weights} e \code{reach\_row} são constantes ao longo de toda a execução e por isso são calculados uma única vez.
 
 \subsection{Fase de construção linha a linha}
 
@@ -343,15 +343,15 @@ def _greedy_randomized_construction(state, sur, rng, allowed_rows,
     return cand, float(np.mean(rcl_sizes))
 \end{lstlisting}
 
-Linha a linha da Listagem~\ref{lst:construcao}. As linhas~6 e~7 iniciam a matriz final como cópia da base e a solução \code{cand} como matriz de zeros. A linha~8 recolhe o alcance apenas das linhas elegíveis, que serão as linhas da grade de escores. O laço da linha~10 repete-se \code{budget} vezes, uma inserção de POI por passo. As linhas~11 a~14 extraem as colunas de indicador correspondentes às dimensões de POI e calculam o mínimo, o máximo e a faixa de cada uma na matriz final corrente. A linha~15 aplica um piso na faixa para evitar divisão por zero quando a coluna é constante. A linha~16 calcula o fator de coluna, $w_d/(\max_d-\min_d)$. A linha~17 forma a grade de escores como o produto externo entre o alcance das linhas elegíveis e o fator de coluna, o que corresponde à Equação~\eqref{eq:surrogate}. As linhas~18 e~19 obtêm o maior e o menor escore e calculam o limiar da RCL segundo a Equação~\eqref{eq:rcl-max}. A linha~20 seleciona as posições (origem, dimensão) cujo escore está acima do limiar, e a linha~21 registra o tamanho dessa RCL. A linha~22 sorteia uma posição da RCL usando o gerador da semente, e as linhas~23 e~24 traduzem essa posição para a linha de origem real e a dimensão escolhida. A linha~25 insere uma unidade de POI na solução. As linhas~26 a~28 atualizam a matriz final de forma incremental: para a origem escolhida, somam o peso $\alpha_{20}$ de cada destino na coluna de indicador da dimensão inserida. A linha~29 devolve a solução construída e o tamanho médio da RCL.
+Linha a linha da Listagem~\ref{lst:construcao}. As linhas~6 e~7 iniciam a matriz final como cópia da base e a solução \code{cand} como matriz de zeros. A linha~8 recolhe o alcance apenas das linhas elegíveis, que serão as linhas da grade de escores. O laço da linha~10 repete-se \code{budget} vezes, uma inserção de POI por passo. As linhas~11 a~14 extraem as colunas de indicador correspondentes às dimensões de POI e calculam o mínimo, o máximo e a faixa de cada uma na matriz final corrente. A linha~15 aplica um piso na faixa para evitar divisão por zero quando a coluna é constante. A linha~16 calcula o fator de coluna, $w_j/(\max_j-\min_j)$. A linha~17 forma a grade de escores como o produto externo entre o alcance das linhas elegíveis e o fator de coluna, o que corresponde à Equação~\eqref{eq:surrogate}. As linhas~18 e~19 obtêm o maior e o menor escore e calculam o limiar da RCL segundo a Equação~\eqref{eq:rcl-max}. A linha~20 seleciona as posições (origem, dimensão) cujo escore está acima do limiar, e a linha~21 registra o tamanho dessa RCL. A linha~22 sorteia uma posição da RCL usando o gerador da semente, e as linhas~23 e~24 traduzem essa posição para a linha de origem real e a dimensão escolhida. A linha~25 insere uma unidade de POI na solução. As linhas~26 a~28 atualizam a matriz final de forma incremental: para a origem escolhida, somam o peso $\phi$ de cada destino na coluna de indicador da dimensão inserida. A linha~29 devolve a solução construída e o tamanho médio da RCL.
 
-O escore da linha~17 é a estimativa que substitui o ganho exato. Mantendo pesos e faixas fixos, o ganho marginal de inserir uma unidade em (origem $h$, dimensão $d$) sobre a soma do IQC é aproximadamente
+O escore da linha~17 é a estimativa que substitui o ganho exato. Mantendo pesos e faixas fixos, o ganho marginal de inserir uma unidade em (origem $h_{i'}$, dimensão $j$) sobre o IQC global é aproximadamente
 \begin{equation}
-\Delta f(h,d) \;\approx\; \frac{w_d}{\max_d - \min_d}\;\sum_t \alpha_{20}(h,t)
-\;=\; \frac{w_d}{\max_d - \min_d}\; \text{alcance}(h).
+\Delta F(i',j) \;\approx\; \frac{w_j}{\max_j - \min_j}\;\sum_{h_i \in \mathcal{N}_{i'}} \phi(t_{i',i})
+\;=\; \frac{w_j}{\max_j - \min_j}\; \text{alcance}(i').
 \label{eq:surrogate}
 \end{equation}
-A dedução vem de observar que aumentar o indicador $d$ em um destino $t$ por $\alpha_{20}(h,t)$ aumenta o IQC daquele destino em $w_d \cdot \alpha_{20}(h,t)/(\max_d - \min_d)$; somando sobre os destinos alcançáveis a partir de $h$ chega-se à Equação~\eqref{eq:surrogate}. A estimativa é separável em um fator de linha, $\text{alcance}(h)$, e um fator de coluna, $w_d/(\max_d-\min_d)$, o que permite montar a grade inteira em uma operação de matriz, sem nenhuma avaliação da função objetivo. Os pesos $w_d$ ficam fixos, mas as faixas são recalculadas a cada passo (linhas~12 a~16); conforme uma dimensão é preenchida, sua faixa cresce e seu fator de coluna cai, o que produz retornos decrescentes e espalha as inserções entre as dimensões.
+A dedução vem de observar que aumentar o indicador $j$ em um destino $h_i$ por $\phi(t_{i',i})$ aumenta o IQC daquele destino em $w_j \cdot \phi(t_{i',i})/(\max_j - \min_j)$; somando sobre os destinos alcançáveis a partir de $h_{i'}$ chega-se à Equação~\eqref{eq:surrogate}. A estimativa é separável em um fator de linha, $\text{alcance}(i')$, e um fator de coluna, $w_j/(\max_j-\min_j)$, o que permite montar a grade inteira em uma operação de matriz, sem nenhuma avaliação da função objetivo. Os pesos $w_j$ ficam fixos, mas as faixas são recalculadas a cada passo (linhas~12 a~16); conforme uma dimensão é preenchida, sua faixa cresce e seu fator de coluna cai, o que produz retornos decrescentes e espalha as inserções entre as dimensões.
 
 O parâmetro $\alpha$ da linha~19 é sorteado de maneira uniforme em $[0,1]$ a cada iteração do GRASP, conforme a segunda alternativa da Seção~\ref{sec:grasp-teoria}. Optou-se por essa estratégia, e não por um $\alpha$ fixo, para introduzir diversidade sem depender de ajuste. O GRASP Reativo foi considerado, mas não adotado nesta versão, por acrescentar parâmetros e código sem necessidade para o objetivo da comparação.
 
@@ -417,27 +417,27 @@ Na Listagem~\ref{lst:ls}, o laço externo da linha~5 executa até \code{max\_ste
 O laço por semente segue o template do Algoritmo~\ref{alg:grasp}, com o critério de parada por orçamento de avaliações. O Algoritmo~\ref{alg:grasp-impl} descreve o procedimento implementado.
 
 \begin{algorithm}[t]
-\caption{GRASP implementado, por semente (maximização de $\sum \text{IQC}$)}
+\caption{GRASP implementado, por semente (maximização de $\overline{\mathrm{IQC}}$)}
 \label{alg:grasp-impl}
 \begin{algorithmic}[1]
 \Procedure{GRASP-Semente}{semente}
   \State inicialize o gerador pseudoaleatório com \emph{semente}
-  \State $f^\ast \gets -\infty$; \quad avaliacoes $\gets 0$; \quad iteracoes $\gets 0$; \quad sem\_melhora $\gets 0$
+  \State $F^\ast \gets -\infty$; \quad avaliacoes $\gets 0$; \quad iteracoes $\gets 0$; \quad sem\_melhora $\gets 0$
   \State pré-compile pesos base e alcance por origem \Comment{Listagem~\ref{lst:surrogate}}
   \While{avaliacoes $< 30000$ \textbf{e} iteracoes $< 500$ \textbf{e} sem\_melhora $< 80$}
     \State iteracoes $\gets$ iteracoes $+ 1$
     \State $\alpha \gets$ valor uniforme em $[0,1]$
     \State $S \gets$ ConstrucaoGulosaAleatorizada($\alpha$) \Comment{Listagem~\ref{lst:construcao}; sem avaliações}
-    \State avalie $f(S)$; \quad avaliacoes $\gets$ avaliacoes $+ 1$
+    \State avalie $F(S)$; \quad avaliacoes $\gets$ avaliacoes $+ 1$
     \State $S \gets$ BuscaLocalPrimeiraMelhora($S$) \Comment{Listagem~\ref{lst:ls}; acumula avaliações}
-    \If{$f(S) > f^\ast$}
-      \State $f^\ast \gets f(S)$; \quad $S^\ast \gets S$; \quad sem\_melhora $\gets 0$; \quad registre $\alpha$
+    \If{$F(S) > F^\ast$}
+      \State $F^\ast \gets F(S)$; \quad $S^\ast \gets S$; \quad sem\_melhora $\gets 0$; \quad registre $\alpha$
     \Else
       \State sem\_melhora $\gets$ sem\_melhora $+ 1$
     \EndIf
     \State registre a trajetória da iteração
   \EndWhile
-  \State \Return $S^\ast$, $f^\ast$ e as métricas da execução
+  \State \Return $S^\ast$, $F^\ast$ e as métricas da execução
 \EndProcedure
 \end{algorithmic}
 \end{algorithm}
@@ -457,9 +457,9 @@ A Figura~\ref{fig:grasp-fluxo} resume o fluxo de uma execução por semente, e a
 \node[bloco,below=of seed] (pre) {pré-compila o escore surrogate\\ (pesos CRITIC da base, alcance por origem)};
 \node[bloco,below=of pre] (alpha) {sorteia $\alpha \sim U[0,1]$};
 \node[bloco,below=of alpha] (con) {construção gulosa randomizada\\ ($100$ inserções via RCL)};
-\node[bloco,below=of con] (ev) {avalia $f(S)$};
+\node[bloco,below=of con] (ev) {avalia $F(S)$};
 \node[bloco,below=of ev] (ls) {busca local por primeira melhora};
-\node[decisao,below=of ls] (dec) {$f(S) > f^\ast$?};
+\node[decisao,below=of ls] (dec) {$F(S) > F^\ast$?};
 \node[bloco,below left=4.5mm and -14mm of dec] (upd) {$S^\ast \gets S$;\quad sem\_melhora $\gets 0$};
 \node[bloco,below right=4.5mm and -14mm of dec] (noimp) {sem\_melhora $\gets$ sem\_melhora $+1$};
 \node[decisao,below=17mm of dec] (stop) {parar?};
@@ -522,7 +522,7 @@ Esta subseção executa o método sobre uma instância pequena, para mostrar os 
 
 \begin{table}[h]
 \centering
-\caption{Matriz de base $x^{\text{base}}$ do exemplo.}
+\caption{Matriz de oferta de base $S_{i,j}$ do exemplo.}
 \label{tab:toy-base}
 \begin{tabular}{@{}lccc@{}}
 \toprule
@@ -538,7 +538,7 @@ $h_3$ & 0,30 & 0,20 & 0,50 \\
 
 Os pares de impacto são: de $h_0$ para $h_0$ com peso $1{,}00$, para $h_2$ com $0{,}50$ e para $h_3$ com $0{,}25$; de $h_1$ para $h_1$ com $1{,}00$ e para $h_2$ com $0{,}50$. Somando os pesos que saem de cada origem, o alcance é $\text{alcance}(h_0) = 1{,}75$ e $\text{alcance}(h_1) = 1{,}50$. Os pesos CRITIC calculados sobre a matriz de base são $0{,}4877$ para \code{S\_saude}, $0{,}2474$ para \code{S\_lazer} e $0{,}2649$ para \code{I\_seguranca}; como dimensões de POI, ficam $w_{\text{saude}} = 0{,}4877$ e $w_{\text{lazer}} = 0{,}2474$.
 
-O objetivo da solução vazia é a linha de base. Os IQC por hexágono são $0{,}5400$, $0{,}4100$, $0{,}2649$ e $0{,}7851$, cuja soma é $f = 2{,}0000$.
+O objetivo da solução vazia é a linha de base. Os IQC por hexágono são $0{,}5400$, $0{,}4100$, $0{,}2649$ e $0{,}7851$, cuja soma é $F = 2{,}0000$.
 
 A seguir, uma construção com $\alpha = 0{,}5$. As Tabelas~\ref{tab:toy-step} resumem os três passos. Em cada passo, a grade de escores tem duas linhas ($h_0$ e $h_1$) e duas colunas (\code{S\_saude} e \code{S\_lazer}), e o limiar corta a RCL.
 
@@ -564,7 +564,7 @@ No passo~2, inserir um POI de \code{S\_saude} em $h_1$ elevou os valores dessa c
 
 No passo~3, agora a faixa de \code{S\_lazer} subiu para $1{,}20$, e \code{S\_saude} volta a ter os maiores escores. A RCL fica com as duas posições de \code{S\_saude}, e o sorteio escolhe de novo $(h_1, \code{S\_saude})$. A solução construída aloca dois POIs de \code{S\_saude} e um de \code{S\_lazer}, todos em $h_1$.
 
-Avaliando essa solução com a função objetivo verdadeira, a matriz final tem $h_1$ com \code{S\_saude} igual a $2{,}1$ e \code{S\_lazer} igual a $1{,}3$, e $h_2$ com \code{S\_saude} igual a $1{,}0$ e \code{S\_lazer} igual a $0{,}5$, por causa da propagação de $h_1$ para os destinos $h_1$ e $h_2$. Os IQC por hexágono passam a $0{,}2341$, $0{,}5318$, $0{,}6713$ e $0{,}2694$, cuja soma é $f = 1{,}7066$.
+Avaliando essa solução com a função objetivo verdadeira, a matriz final tem $h_1$ com \code{S\_saude} igual a $2{,}1$ e \code{S\_lazer} igual a $1{,}3$, e $h_2$ com \code{S\_saude} igual a $1{,}0$ e \code{S\_lazer} igual a $0{,}5$, por causa da propagação de $h_1$ para os destinos $h_1$ e $h_2$. Os IQC por hexágono passam a $0{,}2341$, $0{,}5318$, $0{,}6713$ e $0{,}2694$, cuja soma é $F = 1{,}7066$.
 
 Vale observar que a soma caiu em relação à linha de base, de $2{,}0000$ para $1{,}7066$. Isso acontece porque concentrar os POIs em um único hexágono eleva muito o máximo das colunas \code{S\_saude} e \code{S\_lazer}; como a normalização é min--max, esse máximo alto empurra para baixo os valores normalizados de todos os outros hexágonos, e o ganho no hexágono alocado não compensa a perda nos demais. Esse resultado mostra duas coisas. Primeiro, o escore surrogate é apenas uma estimativa para ordenar candidatos, e não a medida real de qualidade; a solução construída pode até piorar o objetivo. Segundo, é a busca local, avaliada pela função verdadeira, que corrige esse tipo de situação.
 
@@ -699,11 +699,11 @@ O padrão tem uma explicação ligada à estrutura do problema. O escore surroga
 \begin{longtable}{@{}l l c c c c@{}}
 \caption{Análise do $\alpha$ por instância: média e mediana do $\alpha$ da melhor iteração, e correlação de Spearman média (entre iterações de uma execução, média sobre as $100$ execuções, com IC de $95\%$) entre o $\alpha$ e o valor após a busca local. Todas as correlações diferem de zero (Wilcoxon, $p<10^{-15}$).}\label{tab:grasp-alpha}\\
 \toprule
-Localidade & Perfil & $\bar{\alpha}$ melhor & Mediana & $\bar{\rho}_s(\alpha, f_{\text{LS}})$ & IC $95\%$ \\
+Localidade & Perfil & $\bar{\alpha}$ melhor & Mediana & $\bar{\rho}_s(\alpha, F_{\text{LS}})$ & IC $95\%$ \\
 \midrule
 \endfirsthead
 \toprule
-Localidade & Perfil & $\bar{\alpha}$ melhor & Mediana & $\bar{\rho}_s(\alpha, f_{\text{LS}})$ & IC $95\%$ \\
+Localidade & Perfil & $\bar{\alpha}$ melhor & Mediana & $\bar{\rho}_s(\alpha, F_{\text{LS}})$ & IC $95\%$ \\
 \midrule
 \endhead
 av\_paulista & athlete & 0,440 & 0,354 & $+0{,}290$ & $[+0{,}267;\ +0{,}313]$ \\

@@ -123,19 +123,19 @@ Esta seção relaciona o método da Seção~\ref{sec:ils-teoria} com a implement
 
 \subsection{O problema e a representação da solução}
 
-O projeto calcula, para cada hexágono H3 de uma região, onze indicadores de caminhabilidade e, a partir deles, o Índice de Qualidade Caminhável (IQC), com pesos obtidos pelo método CRITIC. A otimização aloca um orçamento fixo de pontos de interesse (POIs) para maximizar a soma do IQC sobre todos os hexágonos. Os POIs entram em sete dimensões (\code{S\_saude}, \code{S\_educacao}, \code{S\_abastecimento}, \code{S\_lazer}, \code{S\_servicos}, \code{T\_transporte}, \code{U\_urbanidade}). Um POI inserido em um hexágono de origem propaga impacto para hexágonos de destino segundo um peso $\alpha_{20}$, derivado do tempo de caminhada por um decaimento em cosseno. O orçamento é de $100$ POIs e a linha de base é a soma do IQC sem nenhuma alocação.
+O projeto calcula, para cada hexágono H3 de uma região, onze indicadores de caminhabilidade e, a partir deles, o Índice de Qualidade Caminhável (IQC), com pesos $w_j$ obtidos pelo método CRITIC. A área é discretizada no conjunto de hexágonos $\mathcal{H}$, e as dimensões formam o conjunto $\mathcal{K}$, com $|\mathcal{K}| = 11$. A otimização aloca um orçamento fixo $B = 100$ de pontos de interesse (POIs) para maximizar a soma do IQC sobre todos os hexágonos. Os POIs entram apenas no subconjunto instalável $\mathcal{K}_{POI} \subset \mathcal{K}$, com $|\mathcal{K}_{POI}| = 7$ (\code{S\_saude}, \code{S\_educacao}, \code{S\_abastecimento}, \code{S\_lazer}, \code{S\_servicos}, \code{T\_transporte}, \code{U\_urbanidade}). Um POI inserido em um hexágono de origem propaga impacto para hexágonos de destino segundo o peso $\phi(t_{i',i})$, derivado do tempo de caminhada por um decaimento em cosseno, $\phi(t) = \bigl(1 + \cos(\pi t / t_{max})\bigr)/2$ para $0 \le t \le t_{max}$ e $\phi(t) = 0$ fora desse intervalo, com $t_{max} = 20$ minutos ($\phi$ corresponde à coluna \code{alpha\_20} dos dados). A linha de base é a soma do IQC sem nenhuma alocação.
 
-Uma solução é uma matriz de inteiros não negativos, com uma linha por hexágono e uma coluna por dimensão de POI, cujos valores somam o orçamento e são não nulos apenas nas linhas de origem elegíveis. A função objetivo constrói a matriz final de indicadores a partir da linha de base e do impacto propagado,
+Uma solução é a matriz $\mathbf{\Delta X}$, de dimensão $|\mathcal{H}| \times |\mathcal{K}_{POI}|$, em que cada entrada $\Delta x_{i,j} \in \mathbb{Z}_{\ge 0}$ é a quantidade de POIs da dimensão $j$ no hexágono $h_i$; as entradas somam o orçamento, $\sum_i \sum_j \Delta x_{i,j} = B$, e são não nulas apenas nas linhas de origem elegíveis. A função objetivo constrói a oferta final a partir da oferta de base e do impacto propagado,
 \begin{equation}
-x^{\text{final}}_{t,c} = x^{\text{base}}_{t,c} + \sum_{h} \alpha_{20}(h,t)\; q_{h,c},
+S^{s}_{i,j}(\mathbf{\Delta X}) = S_{i,j} + \sum_{h_{i'} \in \mathcal{N}_i} \phi(t_{i',i})\; \Delta x_{i',j},
 \label{eq:final-matrix}
 \end{equation}
-onde $q_{h,c}$ é a quantidade de POIs na origem $h$ e dimensão $c$; em seguida recalcula os pesos CRITIC e o IQC, e devolve a soma
+em que $\mathcal{N}_i$ é o conjunto de origens que alcançam $h_i$ dentro de $t_{max}$; em seguida recalcula os pesos CRITIC e o IQC de cada hexágono sobre a oferta normalizada, e devolve o IQC global
 \begin{equation}
-f(S) = \sum_h \text{IQC}_h,
+F(\mathbf{\Delta X}) = \overline{\mathrm{IQC}}(\mathbf{\Delta X}) = \sum_{i \in \mathcal{H}} \mathrm{IQC}_i,
 \label{eq:objetivo}
 \end{equation}
-a ser maximizada. Essa é exatamente a mesma função objetivo usada pelos demais métodos do projeto.
+a ser maximizado; nas descrições dos algoritmos, $F(s)$ denota a aptidão da solução corrente $s = \mathbf{\Delta X}$. Essa é exatamente a mesma função objetivo usada pelos demais métodos do projeto.
 
 \subsection{Os quatro componentes no projeto}
 
@@ -156,11 +156,11 @@ Símbolo & Nome no código & Significado \\
 Símbolo & Nome no código & Significado \\
 \midrule
 \endhead
-$f(S)$ & \code{objective\_value} & soma do IQC da solução \\
+$F(\mathbf{\Delta X})$ & \code{objective\_value} & aptidão; $\overline{\mathrm{IQC}}$, soma do IQC da solução \\
 $B$ & \code{budget} & orçamento; número de POIs ($100$) \\
-$q_{h,d}$ & \code{candidate\_matrix} & solução; POIs na origem $h$, dimensão $d$ \\
-$x^{\text{base}}, x^{\text{final}}$ & \code{baseline\_matrix}, \code{final\_matrix} & indicadores antes e depois do impacto \\
-$\alpha_{20}(h,t)$ & \code{alpha\_values} & peso de impacto do par origem/destino \\
+$\Delta x_{i,j}$, $\mathbf{\Delta X}$ & \code{candidate\_matrix} & solução; POIs no hexágono $h_i$, dimensão $j$ \\
+$S_{i,j}$, $S^s_{i,j}(\mathbf{\Delta X})$ & \code{baseline\_matrix}, \code{final\_matrix} & oferta antes e depois do impacto \\
+$\phi(t_{i',i})$ & \code{alpha\_values} & peso de impacto do par origem/destino \\
 --- & \code{allowed\_source\_rows} & hexágonos elegíveis a receber POI \\
 $s_0$ & \code{initial\_candidate\_matrix} & solução inicial (alocação aleatória) \\
 $s^\ast$ & \code{current\_candidate\_matrix} & ótimo local corrente da caminhada \\
@@ -285,14 +285,14 @@ O critério de aceitação é o \code{Better} da Equação~\eqref{eq:better}, ad
 \Procedure{ILS-Semente}{semente}
   \State inicialize o gerador pseudoaleatório com \emph{semente}
   \State $s_0 \gets$ alocação espacial aleatória do orçamento
-  \State $s^\ast \gets$ BuscaLocalPrimeiraMelhora($s_0$); \quad $f^\ast \gets f(s^\ast)$
+  \State $s^\ast \gets$ BuscaLocalPrimeiraMelhora($s_0$); \quad $F^\ast \gets F(s^\ast)$
   \State melhor $\gets s^\ast$; \quad avaliacoes, iteracoes, sem\_melhora $\gets 0$; \quad força $\gets$ base
   \While{avaliacoes $< 30000$ \textbf{e} iteracoes $< 500$ \textbf{e} sem\_melhora $< 80$}
     \State iteracoes $\gets$ iteracoes $+ 1$
     \State $s' \gets$ Perturbação($s^\ast$, força) \Comment{Listagem~\ref{lst:pert}}
     \State $s^{\ast\prime} \gets$ BuscaLocalPrimeiraMelhora($s'$) \Comment{Listagem~\ref{lst:ls}}
-    \If{$f(s^{\ast\prime}) > f(s^\ast)$} \Comment{aceitação \code{Better}}
-      \State $s^\ast \gets s^{\ast\prime}$; \quad $f^\ast \gets f(s^{\ast\prime})$; \quad melhor $\gets s^\ast$
+    \If{$F(s^{\ast\prime}) > F(s^\ast)$} \Comment{aceitação \code{Better}}
+      \State $s^\ast \gets s^{\ast\prime}$; \quad $F^\ast \gets F(s^{\ast\prime})$; \quad melhor $\gets s^\ast$
       \State sem\_melhora $\gets 0$; \quad força $\gets$ base
     \Else
       \State sem\_melhora $\gets$ sem\_melhora $+ 1$
@@ -317,12 +317,12 @@ A Figura~\ref{fig:ils-fluxo} resume o fluxo de uma execução por semente, e a F
 \begin{tikzpicture}[node distance=3.6mm and 6mm]
 \node[bloco] (seed) {semente $\rightarrow$ gerador pseudoaleatório};
 \node[bloco,below=of seed] (s0) {alocação espacial aleatória $s_0$ ($100$ POIs)};
-\node[bloco,below=of s0] (ev0) {avalia $f(s_0)$};
+\node[bloco,below=of s0] (ev0) {avalia $F(s_0)$};
 \node[bloco,below=of ev0] (ls0) {busca local inicial $\rightarrow s^\ast$};
 \node[bloco,below=of ls0] (pert) {perturbação em blocos\\ (força corrente, preserva dimensão)};
-\node[bloco,below=of pert] (ev) {avalia $f(s')$};
+\node[bloco,below=of pert] (ev) {avalia $F(s')$};
 \node[bloco,below=of ev] (ls) {busca local por primeira melhora $\rightarrow s^{\ast\prime}$};
-\node[decisao,below=of ls] (dec) {$f(s^{\ast\prime}) > f(s^\ast)$?};
+\node[decisao,below=of ls] (dec) {$F(s^{\ast\prime}) > F(s^\ast)$?};
 \node[bloco,below left=4.5mm and -16mm of dec] (upd) {$s^\ast \gets s^{\ast\prime}$;\quad força $\gets$ base;\quad sem\_melhora $\gets 0$};
 \node[bloco,below right=4.5mm and -16mm of dec] (noimp) {sem\_melhora $+1$;\\ a cada $10$: força $+1$};
 \node[decisao,below=19mm of dec] (stop) {parar?};
@@ -419,7 +419,7 @@ Por fim, as $100$ sementes por instância definem o tamanho amostral da análise
 \subsection{Exemplo de execução passo a passo}
 \label{sec:exemplo}
 
-Este exemplo executa os operadores do ILS sobre uma instância pequena, com quatro hexágonos $h_0$ a $h_3$, duas dimensões de POI (\code{S\_saude} e \code{S\_lazer}) e um terceiro indicador fixo (\code{I\_seguranca}), com apenas $h_0$ e $h_1$ elegíveis e orçamento de três POIs. Para focar a caminhada em uma dimensão, considere as alocações na dimensão \code{S\_saude}. Como a busca local preserva a dimensão e há duas origens elegíveis, as soluções alcançáveis são os quatro pares $(h_0, h_1)$ de contagens que somam três. A Tabela~\ref{tab:toy-ils} dá o valor da função objetivo de cada uma. A linha de base (sem POIs) vale $f = 2{,}0000$.
+Este exemplo executa os operadores do ILS sobre uma instância pequena, com quatro hexágonos $h_0$ a $h_3$, duas dimensões de POI (\code{S\_saude} e \code{S\_lazer}) e um terceiro indicador fixo (\code{I\_seguranca}), com apenas $h_0$ e $h_1$ elegíveis e orçamento de três POIs. Para focar a caminhada em uma dimensão, considere as alocações na dimensão \code{S\_saude}. Como a busca local preserva a dimensão e há duas origens elegíveis, as soluções alcançáveis são os quatro pares $(h_0, h_1)$ de contagens que somam três. A Tabela~\ref{tab:toy-ils} dá o valor da função objetivo de cada uma. A linha de base (sem POIs) vale $F = 2{,}0000$.
 
 \begin{table}[h]
 \centering
@@ -429,14 +429,14 @@ Este exemplo executa os operadores do ILS sobre uma instância pequena, com quat
 \toprule
 $(h_0, h_1)$ em \code{S\_saude} & $(3,0)$ & $(2,1)$ & $(1,2)$ & $(0,3)$ \\
 \midrule
-$f$ & 1,8852 & 1,8605 & 2,0155 & 1,7397 \\
+$F$ & 1,8852 & 1,8605 & 2,0155 & 1,7397 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-A solução inicial da semente coloca os três POIs em $h_1$, ou seja, $(0,3)$, com $f = 1{,}7397$. A busca local, por primeira melhora, realoca uma unidade de $h_1$ para $h_0$, chega a $(1,2)$ com $f = 2{,}0155$ e para, porque nenhum outro movimento único melhora ($(2,1)$ vale $1{,}8605$ e $(0,3)$ é pior). Esse é o ponto de partida $s^\ast$ da caminhada, já acima da linha de base.
+A solução inicial da semente coloca os três POIs em $h_1$, ou seja, $(0,3)$, com $F = 1{,}7397$. A busca local, por primeira melhora, realoca uma unidade de $h_1$ para $h_0$, chega a $(1,2)$ com $F = 2{,}0155$ e para, porque nenhum outro movimento único melhora ($(2,1)$ vale $1{,}8605$ e $(0,3)$ é pior). Esse é o ponto de partida $s^\ast$ da caminhada, já acima da linha de base.
 
-Na iteração seguinte, a perturbação realoca uma unidade dentro de \code{S\_saude}, levando a solução de $(1,2)$ de volta a $(0,3)$, com $f = 1{,}7397$. A busca local então sobe outra vez para $(1,2)$, com $f = 2{,}0155$. Pelo critério \code{Better}, o novo ótimo local não supera o corrente ($2{,}0155$ não é maior que $2{,}0155$), então a perturbação é rejeitada e a caminhada permanece em $(1,2)$. Neste exemplo mínimo há um único ótimo local alcançável em \code{S\_saude}, de modo que a perturbação retorna a ele; em instâncias reais, com muitos hexágonos, existem vários ótimos locais, e a perturbação permite alcançar ótimos diferentes, às vezes melhores. É esse o mecanismo que, ao longo de muitas iterações, produz os ganhos medidos na Seção~\ref{sec:ils-analise}.
+Na iteração seguinte, a perturbação realoca uma unidade dentro de \code{S\_saude}, levando a solução de $(1,2)$ de volta a $(0,3)$, com $F = 1{,}7397$. A busca local então sobe outra vez para $(1,2)$, com $F = 2{,}0155$. Pelo critério \code{Better}, o novo ótimo local não supera o corrente ($2{,}0155$ não é maior que $2{,}0155$), então a perturbação é rejeitada e a caminhada permanece em $(1,2)$. Neste exemplo mínimo há um único ótimo local alcançável em \code{S\_saude}, de modo que a perturbação retorna a ele; em instâncias reais, com muitos hexágonos, existem vários ótimos locais, e a perturbação permite alcançar ótimos diferentes, às vezes melhores. É esse o mecanismo que, ao longo de muitas iterações, produz os ganhos medidos na Seção~\ref{sec:ils-analise}.
 
 \section{Análise dos resultados}
 \label{sec:ils-analise}
@@ -509,7 +509,7 @@ A Tabela~\ref{tab:pareado} apresenta a comparação pareada entre as forças $2$
 
 \begin{table}[h]
 \centering
-\caption{Comparação pareada entre força $10$ e força $2$ (mesmas sementes). Diferença média = $f(s{=}10) - f(s{=}2)$; vitórias contam sementes em que cada força foi melhor; $p$ é o teste de Wilcoxon; todas as diferenças são significativas após correção de Holm.}
+\caption{Comparação pareada entre força $10$ e força $2$ (mesmas sementes). Diferença média $=$ valor final com força $10$ $-$ valor final com força $2$; vitórias contam sementes em que cada força foi melhor; $p$ é o teste de Wilcoxon; todas as diferenças são significativas após correção de Holm.}
 \label{tab:pareado}
 \renewcommand{\arraystretch}{1.15}
 \begin{tabular}{@{}l l c c c c@{}}
