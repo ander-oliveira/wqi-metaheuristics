@@ -1,0 +1,547 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  frame=single,
+  framesep=4pt,
+  xleftmargin=18pt,
+  showstringspaces=false
+}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{GRASP para a otimização do Índice de Qualidade Caminhável (IQC):\\ método clássico e implementação no projeto}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{GRASP}
+\label{sec:grasp-teoria}
+
+Esta seção descreve o GRASP na sua forma clássica, seguindo a apresentação de Resende e Ribeiro~\cite{resendeRibeiro2008}. O objetivo aqui é registrar o método como ele foi originalmente proposto, sem ainda tratar do problema específico desta tese. As decisões de adaptação ficam para a Seção~\ref{sec:grasp-projeto}.
+
+\subsection{Visão geral}
+
+GRASP é a sigla de \emph{greedy randomized adaptive search procedures}. Trata-se de uma metaheurística multi-start (de partidas múltiplas) voltada a problemas de otimização combinatória. Considera-se o problema de minimizar (ou maximizar) uma função objetivo $f(S)$ sobre um conjunto de soluções viáveis $S \in X$, definido a partir de um conjunto-base (ground set) $E = \{e_1,\dots,e_n\}$, de uma família de soluções viáveis $X \subseteq 2^E$ e da função $f: 2^E \rightarrow \mathbb{R}$. Procura-se uma solução $S^\ast$ tal que $f(S^\ast) \le f(S)$ para todo $S \in X$, no caso de minimização.
+
+Cada iteração do GRASP tem duas fases. A primeira é a construção, que produz uma solução viável a partir do zero. A segunda é a busca local, que investiga a vizinhança dessa solução até encontrar um ótimo local. As duas fases são repetidas muitas vezes, e a melhor solução encontrada ao longo de todas as iterações é retornada. Quando a construção gera uma solução inviável, aplica-se um procedimento de reparo; se a viabilidade não for alcançada, a solução é descartada e outra é gerada.
+
+Uma característica frequentemente citada do método é a facilidade de implementação. São poucos os parâmetros a ajustar, o que permite concentrar o esforço de desenvolvimento em estruturas de dados que tornem cada iteração rápida. Em sua forma básica, o GRASP depende essencialmente de dois parâmetros: o número de iterações e o parâmetro que limita o tamanho da lista restrita de candidatos usada na construção.
+
+\subsection{Construção gulosa e aleatorização}
+
+A fase de construção parte de um algoritmo guloso. Em um algoritmo guloso puro, a solução é montada elemento a elemento: a cada passo, avalia-se o custo incremental de incorporar cada candidato do conjunto-base à solução parcial, e escolhe-se o elemento de menor custo incremental (no caso de minimização), atualizando-se em seguida o conjunto de candidatos e os custos. O resultado não é necessariamente ótimo, mas serve como ponto de partida para busca local ou para metaheurísticas.
+
+O GRASP substitui a escolha estritamente gulosa por uma escolha gulosa e aleatorizada. A cada passo, monta-se uma lista restrita de candidatos, chamada RCL (\emph{restricted candidate list}), formada pelos melhores elementos segundo a função gulosa. O próximo elemento a ser incorporado é sorteado dentro dessa lista, em vez de ser sempre o de melhor custo incremental. Como o sorteio muda a cada execução, o mesmo procedimento produz soluções diferentes em execuções diferentes, o que é a base do caráter multi-start do método.
+
+Há duas formas de limitar a RCL. Na versão baseada em cardinalidade, a lista guarda os $p$ elementos de melhor custo incremental, sendo $p$ um parâmetro. Na versão baseada em qualidade (ou valor), usa-se um parâmetro de limiar $\alpha \in [0,1]$. Denotando por $c(e)$ o custo incremental de incorporar o elemento $e$, e por $c^{\min}$ e $c^{\max}$ o menor e o maior custos incrementais entre os candidatos, a RCL para minimização é
+\begin{equation}
+\text{RCL} = \{\, e \in C \;:\; c(e) \le c^{\min} + \alpha\,(c^{\max} - c^{\min}) \,\}.
+\label{eq:rcl-min}
+\end{equation}
+Nessa formulação, $\alpha = 0$ corresponde a um algoritmo guloso puro, pois só o melhor elemento entra na lista, enquanto $\alpha = 1$ corresponde a uma construção puramente aleatória, já que todos os candidatos passam a ser aceitos. O Algoritmo~\ref{alg:construcao} reproduz a construção com o limiar $\alpha$.
+
+\begin{algorithm}[t]
+\caption{Construção gulosa e aleatorizada (minimização)}
+\label{alg:construcao}
+\begin{algorithmic}[1]
+\Procedure{ConstrucaoGulosaAleatorizada}{$\alpha$, semente}
+  \State $S \gets \emptyset$
+  \State $C \gets E$ \Comment{conjunto de candidatos}
+  \State avalie o custo incremental $c(e)$ para todo $e \in C$
+  \While{$C \neq \emptyset$}
+    \State $c^{\min} \gets \min\{c(e) : e \in C\}$
+    \State $c^{\max} \gets \max\{c(e) : e \in C\}$
+    \State $\text{RCL} \gets \{ e \in C : c(e) \le c^{\min} + \alpha(c^{\max}-c^{\min}) \}$
+    \State escolha $s$ ao acaso na RCL
+    \State $S \gets S \cup \{s\}$
+    \State atualize $C$ e reavalie $c(e)$ para todo $e \in C$
+  \EndWhile
+  \State \Return $S$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+Linha a linha, o Algoritmo~\ref{alg:construcao} funciona assim. A linha~2 inicia a solução vazia. A linha~3 coloca todos os elementos do conjunto-base como candidatos. A linha~4 calcula o custo incremental de cada candidato. O laço das linhas~5 a~11 repete-se enquanto houver candidatos. As linhas~6 e~7 obtêm o menor e o maior custo incremental do momento, que definem a faixa usada no limiar. A linha~8 monta a RCL com todos os candidatos cujo custo esteja dentro da fração $\alpha$ da faixa. A linha~9 sorteia um elemento da RCL, e a linha~10 o incorpora à solução. A linha~11 atualiza a lista de candidatos e recalcula os custos, porque incorporar um elemento pode mudar o custo incremental dos demais. Ao final, a linha~13 devolve a solução construída.
+
+O GRASP pode ser entendido como uma técnica de amostragem repetitiva. Cada iteração produz uma amostra de solução vinda de uma distribuição desconhecida, cuja média e variância dependem de quão restritiva é a RCL. Valores pequenos de $\alpha$ levam a soluções com média próxima da solução gulosa e pouca dispersão; valores maiores aumentam a dispersão. Observou-se que costuma dar bons resultados a combinação de média relativamente baixa com variância relativamente alta, situação em que se enquadra, por exemplo, $\alpha = 0{,}2$.
+
+\subsection{Vizinhanças e busca local}
+
+Uma vizinhança de uma solução $S$ é um conjunto $N(S) \subseteq X$. Cada solução $S' \in N(S)$ é alcançada a partir de $S$ por uma operação chamada movimento, e em geral duas soluções vizinhas diferem por poucos elementos. Uma solução $S^\ast$ é um ótimo local em relação a $N$ quando $f(S^\ast) \le f(S)$ para todo $S \in N(S^\ast)$.
+
+A busca local tenta melhorar a solução de forma iterativa, trocando a solução corrente por uma solução melhor da vizinhança, até que nenhuma solução melhor seja encontrada. A eficácia do procedimento depende da estrutura de vizinhança, da técnica de varredura, da rapidez com que a função objetivo é avaliada e da solução de partida. A varredura pode ser feita de duas maneiras. Na estratégia de melhor melhora (\emph{best-improving}), todos os vizinhos são examinados e a solução corrente é substituída pelo melhor deles. Na estratégia de primeira melhora (\emph{first-improving}), a solução se move para o primeiro vizinho de custo menor que o corrente. As duas costumam chegar a soluções de qualidade semelhante, mas a primeira melhora tende a gastar menos tempo, e a melhor melhora é mais propensa a convergência prematura para um ótimo local não global.
+
+Quando a vizinhança é muito grande ou a avaliação de seus elementos é cara, empregam-se estratégias de restrição de vizinhança e listas de candidatos, cujo propósito é isolar regiões promissoras e examinar apenas parte dos movimentos. A eficiência dessas estratégias pode ser reforçada por estimativas de valor de movimento calculadas de forma rápida, usadas para descartar movimentos com estimativas ruins antes de uma avaliação completa. Esse ponto será retomado na Seção~\ref{sec:grasp-projeto}, porque a construção usada neste trabalho se apoia exatamente em uma estimativa desse tipo.
+
+\subsection{O laço multi-start e o template}
+
+O template básico do GRASP aparece no Algoritmo~\ref{alg:grasp}. Ele executa um número fixo de iterações. Em cada iteração, gera uma solução pela construção gulosa e aleatorizada, repara-a se necessário, aplica busca local e atualiza a melhor solução conhecida. O parâmetro \emph{semente} inicializa o gerador de números pseudoaleatórios, o que permite reproduzir uma execução.
+
+\begin{algorithm}[t]
+\caption{Template do GRASP (minimização)}
+\label{alg:grasp}
+\begin{algorithmic}[1]
+\Procedure{GRASP}{MaxIter, semente}
+  \State $f^\ast \gets +\infty$
+  \For{$k = 1, \dots, \text{MaxIter}$}
+    \State $S \gets \Call{ConstrucaoGulosaAleatorizada}{\alpha, \text{semente}}$
+    \If{$S$ não é viável}
+      \State $S \gets \Call{Reparo}{S}$
+    \EndIf
+    \State $S \gets \Call{BuscaLocal}{S}$
+    \If{$f(S) < f^\ast$}
+      \State $S^\ast \gets S$; \quad $f^\ast \gets f(S)$
+    \EndIf
+  \EndFor
+  \State \Return $S^\ast$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+No Algoritmo~\ref{alg:grasp}, a linha~2 inicia o melhor valor conhecido como infinito, já que é minimização. O laço das linhas~3 a~10 executa \code{MaxIter} iterações independentes. A linha~4 constrói uma solução. As linhas~5 a~7 reparam a solução se ela for inviável. A linha~8 aplica a busca local. As linhas~9 e~10 guardam a solução como melhor conhecida quando seu valor supera o melhor até então. A linha~12 devolve a melhor solução de todas as iterações. Um ponto importante é que, na forma original, o GRASP não guarda informação entre iterações: cada iteração é independente das demais. Essa independência é o que torna o método adequado a implementações paralelas, já que iterações podem ser distribuídas entre processadores sem coordenação.
+
+\subsection{Variações da construção e do parâmetro \texorpdfstring{$\alpha$}{alpha}}
+
+Usar um único valor fixo de $\alpha$ costuma atrapalhar a busca por soluções de alta qualidade, que poderiam ser encontradas com outro valor. Há três alternativas usuais. A primeira é manter $\alpha$ fixo. A segunda é sortear $\alpha$ de maneira uniforme no intervalo $[0,1]$ a cada iteração, o que introduz diversidade sem custo de ajuste. A terceira é o GRASP Reativo, no qual $\alpha$ é auto-ajustado ao longo da execução, com base na qualidade das soluções obtidas anteriormente com cada valor. Relatos na literatura indicam que o GRASP Reativo tende a superar a versão básica, e que estratégias que variam $\alpha$ tendem a ser mais efetivas do que um valor fixo único.
+
+Também existem esquemas de construção com complexidade de pior caso menor do que a do Algoritmo~\ref{alg:construcao}. No esquema \emph{random plus greedy}, aplica-se aleatoriedade nos primeiros $p$ passos, produzindo uma solução parcial aleatória, e o restante é completado de forma gulosa. No esquema \emph{sampled greedy}, a cada passo amostram-se $\min\{p, |C|\}$ elementos do conjunto de candidatos, avalia-se apenas essa amostra pela função gulosa e escolhe-se o de melhor valor. Em ambos, o parâmetro $p$ controla o balanço entre ganância e aleatoriedade: amostras pequenas produzem soluções mais aleatórias, amostras grandes produzem soluções mais gulosas.
+
+\subsection{Intensificação e path-relinking}
+
+O GRASP clássico é o que foi descrito até aqui: construção mais busca local, repetidas, guardando a melhor solução. A partir dele foram propostas extensões de intensificação, sendo a mais conhecida o \emph{path-relinking}. Nessa técnica, exploram-se trajetórias no espaço de soluções ligando uma solução corrente a soluções de elite guardadas em um conjunto, na tentativa de incorporar atributos das soluções de boa qualidade. O path-relinking adiciona memória ao procedimento e costuma melhorar tempo e qualidade, mas não faz parte do GRASP na forma original do template. Neste trabalho ele não é usado na versão clássica aqui documentada; a combinação de GRASP com outras estratégias é tratada por um método separado no projeto.
+
+\subsection{Boas práticas relevantes}
+
+Alguns pontos práticos do método são diretamente aproveitados na Seção~\ref{sec:grasp-projeto}. Bons pontos de partida costumam levar a melhores soluções finais e reduzir o tempo de busca local. A busca local pode ser bastante acelerada com estruturas de dados adequadas e com listas de candidatos que armazenam ou estimam valores de movimento, evitando reavaliações completas. A varredura por primeira melhora tende a ser preferível pelo menor tempo e menor risco de convergência prematura. Por fim, não existe metaheurística universal: a estrutura de cada problema deve ser explorada na construção do algoritmo, e conhecimento sobre o problema deve ser usado para desenhar funções de avaliação e vizinhanças eficientes.
+
+\section{GRASP no projeto}
+\label{sec:grasp-projeto}
+
+Esta seção relaciona o método descrito na Seção~\ref{sec:grasp-teoria} com a implementação feita no projeto. A cada elemento da teoria corresponde uma decisão concreta de modelagem ou de código, e essas correspondências são explicitadas ao longo do texto. A implementação está no módulo \code{metaheuristics/methods/grasp.py} e reutiliza a infraestrutura comum de avaliação e a busca local já usada pelo método de \emph{Iterated Local Search} (ILS).
+
+\subsection{O problema de otimização}
+
+O projeto calcula, para cada hexágono H3 de uma região, um conjunto de indicadores de caminhabilidade e, a partir deles, o Índice de Qualidade Caminhável (IQC). São onze indicadores: \code{S\_saude}, \code{S\_educacao}, \code{S\_abastecimento}, \code{S\_lazer}, \code{S\_servicos}, \code{I\_seguranca}, \code{A\_vegetacao}, \code{A\_agua}, \code{C\_conectividade}, \code{T\_transporte} e \code{U\_urbanidade}. O IQC de um hexágono é uma agregação ponderada desses indicadores, com pesos obtidos pelo método CRITIC.
+
+A otimização consiste em alocar um orçamento fixo de pontos de interesse (POIs) na região, com o objetivo de maximizar a soma do IQC sobre todos os hexágonos. Os POIs só podem ser inseridos em sete das onze dimensões, aquelas que representam equipamentos passíveis de instalação: \code{S\_saude}, \code{S\_educacao}, \code{S\_abastecimento}, \code{S\_lazer}, \code{S\_servicos}, \code{T\_transporte} e \code{U\_urbanidade}. Um POI inserido em um hexágono de origem não afeta apenas aquele hexágono: seu efeito se propaga para hexágonos de destino segundo um modelo de impacto temporal. Cada par origem--destino tem um peso $\alpha_{20}$ derivado do tempo de caminhada entre eles, por um decaimento em cosseno,
+\begin{equation}
+\alpha_{20}(t) =
+\begin{cases}
+\dfrac{1 + \cos\!\left(\pi\,t/20\right)}{2}, & 0 \le t \le 20,\\[2mm]
+0, & \text{caso contrário},
+\end{cases}
+\label{eq:alpha20}
+\end{equation}
+sendo $t$ o tempo de caminhada em minutos. Assim, inserir um POI perto de muitos destinos alcançáveis rende mais do que inseri-lo em um ponto isolado. O orçamento adotado é de $100$ POIs, e o valor da soma do IQC sem nenhuma alocação é a linha de base (\emph{baseline}) usada para medir o ganho.
+
+\subsection{Representação da solução e conjunto-base}
+
+A correspondência com a teoria começa na definição do conjunto-base. Um elemento do conjunto-base $E$ é a inserção de uma unidade de POI em um par (hexágono de origem, dimensão). Uma solução é uma matriz de inteiros não negativos, com uma linha por hexágono e uma coluna por dimensão de POI, cujos valores somam o orçamento e são não nulos apenas nas linhas correspondentes a hexágonos de origem elegíveis. Cada unidade alocada é, portanto, um elemento incorporado à solução.
+
+Sob essa representação, o orçamento coincide com o número de passos da construção: como cada passo insere uma unidade de POI, toda solução construída tem exatamente $100$ POIs. Essa escolha mantém a solução dentro do mesmo espaço de busca usado pelo ILS e preserva a mesma invariante de conservação de orçamento, o que é necessário para que a comparação entre os dois métodos seja feita sobre o mesmo conjunto de soluções viáveis.
+
+\subsection{Glossário de variáveis}
+
+Para acompanhar os algoritmos das próximas subseções, a Tabela~\ref{tab:glossario} reúne os símbolos matemáticos, os nomes usados no código e o significado de cada variável.
+
+\renewcommand{\arraystretch}{1.25}
+\begin{longtable}{@{}p{2.4cm} p{4.2cm} p{7.6cm}@{}}
+\caption{Variáveis usadas na formulação e no código.}\label{tab:glossario}\\
+\toprule
+Símbolo & Nome no código & Significado \\
+\midrule
+\endfirsthead
+\toprule
+Símbolo & Nome no código & Significado \\
+\midrule
+\endhead
+$E$ & --- & conjunto-base; pares (origem, dimensão) \\
+$S$, $S^\ast$ & --- & solução corrente e melhor solução \\
+$f(S)$ & \code{objective\_value} & soma do IQC da solução \\
+$B$ & \code{budget} & orçamento; número de POIs a alocar ($100$) \\
+$H$ & \code{h3\_ids}, \code{n\_hex} & lista de hexágonos e sua quantidade \\
+$D$ & \code{candidate\_dimensions}, \code{n\_dims} & dimensões de POI (sete) \\
+--- & \code{indicator\_columns} & os onze indicadores usados no IQC \\
+--- & \code{candidate\_to\_indicator\_indices} (\code{cols}) & para cada dimensão de POI, o índice da coluna de indicador correspondente \\
+$x^{\text{base}}$ & \code{baseline\_matrix} & matriz de indicadores de base ($n\_hex \times 11$) \\
+$x^{\text{final}}$ & \code{final\_matrix} & matriz de indicadores após aplicar o impacto da alocação \\
+$q_{h,d}$ & \code{candidate\_matrix} (\code{cand}) & solução; quantidade de POIs na origem $h$, dimensão $d$ \\
+$\alpha_{20}(h,t)$ & \code{alpha\_values} & peso de impacto do par origem $h$ / destino $t$ \\
+--- & \code{source\_indices}, \code{target\_indices} & índices de origem e destino de cada par de impacto \\
+--- & \code{allowed\_source\_rows} & linhas (hexágonos) elegíveis a receber POI \\
+$\text{alcance}(h)$ & \code{reach\_row} & soma dos pesos de impacto que saem de $h$ \\
+$w_d$ & \code{base\_weights} & peso CRITIC da dimensão $d$ \\
+$\min_d,\max_d$ & \code{col\_min}, \code{col\_max} & mínimo e máximo da coluna $d$ na matriz corrente \\
+--- & \code{range\_safe} & faixa $\max_d-\min_d$, com piso para evitar divisão por zero \\
+--- & \code{col\_factor} & fator de coluna $w_d/(\max_d-\min_d)$ \\
+--- & \code{score\_grid} & escore surrogate por (origem elegível, dimensão) \\
+$\alpha$ & \code{alpha} & parâmetro de limiar da RCL \\
+--- & \code{threshold} & limiar de corte da RCL \\
+--- & \code{rcl\_positions}, \code{rcl\_size} & elementos da RCL e seu tamanho \\
+--- & \code{random\_generator} (\code{rng}) & gerador pseudoaleatório da semente \\
+--- & \code{evaluations} & número de avaliações reais da função objetivo \\
+--- & \code{iterations} & número de iterações GRASP na execução \\
+--- & \code{no\_improve\_streak} & iterações seguidas sem melhorar a melhor solução \\
+--- & \code{max\_evaluations} & teto de avaliações ($30\,000$) \\
+--- & \code{max\_iterations} & teto de iterações ($500$) \\
+--- & \code{max\_no\_improve} & teto de iterações sem melhora ($80$) \\
+\bottomrule
+\end{longtable}
+
+\subsection{A função objetivo compartilhada}
+
+Todos os métodos do projeto avaliam uma solução pela mesma função objetivo, implementada em \code{metaheuristics/core/evaluation.py}. A avaliação tem duas etapas: construir a matriz final de indicadores a partir da linha de base e do impacto da alocação, e depois recalcular os pesos CRITIC e o IQC sobre essa matriz. A Listagem~\ref{lst:objetivo} mostra as duas etapas.
+
+\begin{lstlisting}[language=Python,caption={Construção da matriz final e avaliação do objetivo.},label={lst:objetivo}]
+def build_final_indicator_matrix_nd(candidate_matrix, state):
+    n_hex = len(state.h3_ids)
+    n_dims = len(state.candidate_dimensions)
+    allocation_rows = candidate_matrix[state.source_indices]
+    weighted_rows = allocation_rows * state.alpha_values[:, None]
+    delta_by_target = np.zeros((n_hex, n_dims))
+    np.add.at(delta_by_target, state.target_indices, weighted_rows)
+    final_matrix = state.baseline_matrix.copy()
+    final_matrix[:, state.candidate_to_indicator_indices] += delta_by_target
+    return final_matrix
+
+def objective_function(final_indicator_matrix):
+    critic_weights = _compute_critic_weights_numpy(final_indicator_matrix)
+    iqc_values = _compute_iqc_numpy(final_indicator_matrix, critic_weights)
+    objective_value = float(iqc_values.sum())
+    return {"objective_value": objective_value, ...}
+\end{lstlisting}
+
+Explicando a Listagem~\ref{lst:objetivo} linha a linha. A linha~4 seleciona, para cada par de impacto, a linha da alocação correspondente ao hexágono de origem daquele par. A linha~5 multiplica cada uma dessas linhas pelo peso $\alpha_{20}$ do par, o que dá a contribuição que sai de cada origem para o respectivo destino. A linha~6 cria uma matriz de deltas por destino, zerada. A linha~7 soma, em cada destino, as contribuições vindas de todas as origens que o alcançam; a função \code{np.add.at} faz essa soma acumulando corretamente quando vários pares apontam para o mesmo destino. A linha~8 copia a matriz de base, e a linha~9 soma os deltas nas colunas de indicador que correspondem às dimensões de POI. O resultado é a Equação~\eqref{eq:final-matrix}:
+\begin{equation}
+x^{\text{final}}_{t,c} = x^{\text{base}}_{t,c} + \sum_{h} \alpha_{20}(h,t)\; q_{h,c}.
+\label{eq:final-matrix}
+\end{equation}
+Na segunda função, a linha~13 recalcula os pesos CRITIC sobre a matriz final, a linha~14 recalcula o IQC de cada hexágono e a linha~15 soma esses valores para obter o objetivo.
+
+A normalização usada no IQC é min--max por coluna,
+\begin{equation}
+r_{h,c} =
+\begin{cases}
+\dfrac{x^{\text{final}}_{h,c} - \min_c}{\max_c - \min_c}, & \max_c > \min_c,\\[2mm]
+0{,}5, & \max_c = \min_c,
+\end{cases}
+\end{equation}
+e o IQC de um hexágono é a soma ponderada $\text{IQC}_h = \sum_c w_c\, r_{h,c}$, arredondada a quatro casas decimais. O objetivo é
+\begin{equation}
+f(S) = \sum_h \text{IQC}_h,
+\label{eq:objetivo}
+\end{equation}
+a ser maximizado. Os pesos $w_c$ vêm do CRITIC: para cada coluna calcula-se o desvio padrão da coluna normalizada, $\sigma_c$, e uma medida de conflito $\sum_{j}\bigl(1 - |\rho_{c,j}|\bigr)$, com $\rho_{c,j}$ a correlação entre as colunas $c$ e $j$; o produto $\sigma_c \sum_{j}(1-|\rho_{c,j}|)$ é normalizado para somar um.
+
+Como a função é de maximização, a RCL correspondente à Equação~\eqref{eq:rcl-min} passa a selecionar os elementos de maior ganho. Se $g(e)$ é o ganho de incorporar o elemento $e$, e $g^{\max}$ e $g^{\min}$ são o maior e o menor ganhos entre os candidatos, a RCL usada é
+\begin{equation}
+\text{RCL} = \{\, e \in C \;:\; g(e) \ge g^{\max} - \alpha\,(g^{\max} - g^{\min}) \,\}.
+\label{eq:rcl-max}
+\end{equation}
+
+\subsection{Por que a função objetivo não tem custo incremental barato}
+
+A teoria do Algoritmo~\ref{alg:construcao} pressupõe que se possa avaliar o custo (ou ganho) incremental de cada candidato a cada passo. No caso do IQC isso é caro. O problema está no CRITIC e na normalização: os pesos $w_c$ dependem do desvio padrão e das correlações de todas as colunas, e a normalização depende do mínimo e do máximo de cada coluna. Inserir uma única unidade de POI altera muitos hexágonos de destino, o que muda as estatísticas das colunas e, com elas, os pesos. O efeito marginal de um elemento não é independente do restante da solução, ou seja, a função objetivo é não separável.
+
+Na prática, calcular o ganho exato de cada candidato exigiria uma avaliação completa da Equação~\eqref{eq:objetivo} por candidato, a cada passo da construção. O número de candidatos é da ordem de (número de hexágonos de origem) $\times\,7$ dimensões, o que dá aproximadamente mil e duzentos candidatos em uma região típica. Uma construção gulosa exata custaria, então, cerca de $100 \times 1200 = 120\,000$ avaliações para montar uma única solução, mais do que o orçamento total de avaliações de uma execução inteira do ILS. Isso inviabiliza a construção gulosa exata para um método genuinamente multi-start, que precisa montar muitas soluções.
+
+\subsection{Pré-compilação do estado e do escore surrogate}
+
+Antes do laço, o método precompila os valores que não mudam durante a execução. A Listagem~\ref{lst:surrogate} mostra esse passo.
+
+\begin{lstlisting}[language=Python,caption={Pré-compilação do escore surrogate.},label={lst:surrogate}]
+def _build_construction_surrogate(state):
+    baseline = state.baseline_matrix
+    n_hex = baseline.shape[0]
+    full_weights = _compute_critic_weights_numpy(baseline)
+    base_weights = full_weights[state.candidate_to_indicator_indices]
+    reach_row = np.zeros(n_hex)
+    np.add.at(reach_row, state.source_indices, state.alpha_values)
+    order = np.argsort(state.source_indices, kind="stable")
+    sorted_sources = state.source_indices[order]
+    sorted_targets = state.target_indices[order]
+    sorted_alphas  = state.alpha_values[order]
+    source_targets, source_alphas = {}, {}
+    unique_sources, start = np.unique(sorted_sources, return_index=True)
+    bounds = list(start) + [sorted_sources.size]
+    for i, s in enumerate(unique_sources):
+        lo, hi = bounds[i], bounds[i + 1]
+        source_targets[int(s)] = sorted_targets[lo:hi]
+        source_alphas[int(s)]  = sorted_alphas[lo:hi]
+    return base_weights, reach_row, source_targets, source_alphas
+\end{lstlisting}
+
+Linha a linha da Listagem~\ref{lst:surrogate}. A linha~4 calcula os pesos CRITIC da solução vazia, ou seja, sobre a matriz de base; esse cálculo é numérico e não conta como avaliação da função objetivo. A linha~5 seleciona, entre esses pesos, apenas os das sete dimensões de POI, guardando-os em \code{base\_weights}. As linhas~6 e~7 calculam o alcance de cada hexágono, somando os pesos $\alpha_{20}$ de todos os pares de impacto que partem daquele hexágono; \code{np.add.at} acumula por índice de origem. As linhas~8 a~11 ordenam os pares de impacto por origem, para poder agrupá-los. As linhas~12 a~18 constroem, para cada origem, a lista dos seus destinos e a lista dos pesos correspondentes, guardadas em \code{source\_targets} e \code{source\_alphas}. Esses dois dicionários permitem, durante a construção, atualizar a matriz final de forma incremental sem varrer todos os pares. A linha~19 devolve os quatro objetos precompilados. Como toda construção começa da solução vazia, \code{base\_weights} e \code{reach\_row} são constantes ao longo de toda a execução e por isso são calculados uma única vez.
+
+\subsection{Fase de construção linha a linha}
+
+A construção gulosa e aleatorizada está na Listagem~\ref{lst:construcao}. Ela é a versão para maximização do Algoritmo~\ref{alg:construcao}, com a diferença de que a função gulosa é o escore surrogate, não o ganho exato.
+
+\begin{lstlisting}[language=Python,caption={Construção gulosa e aleatorizada com escore surrogate.},label={lst:construcao}]
+def _greedy_randomized_construction(state, sur, rng, allowed_rows,
+                                    budget, alpha, eps):
+    n_hex = state.baseline_matrix.shape[0]
+    n_dims = len(state.candidate_dimensions)
+    cols = sur.candidate_to_indicator_indices
+    final = state.baseline_matrix.copy()
+    cand = np.zeros((n_hex, n_dims))
+    reach_allowed = sur.reach_row[allowed_rows]
+    rcl_sizes = []
+    for _ in range(budget):
+        sub = final[:, cols]
+        col_min = sub.min(axis=0)
+        col_max = sub.max(axis=0)
+        col_range = col_max - col_min
+        range_safe = np.where(col_range > eps, col_range, eps)
+        col_factor = sur.base_weights / range_safe
+        score = reach_allowed[:, None] * col_factor[None, :]
+        smax = score.max(); smin = score.min()
+        threshold = smax - alpha * (smax - smin)
+        rcl = np.argwhere(score >= threshold - 1e-15)
+        rcl_sizes.append(rcl.shape[0])
+        k = int(rng.integers(0, rcl.shape[0]))
+        local_row, d = int(rcl[k, 0]), int(rcl[k, 1])
+        s = int(allowed_rows[local_row])
+        cand[s, d] += 1.0
+        t = sur.source_targets.get(s)
+        if t is not None and t.size:
+            final[t, int(cols[d])] += sur.source_alphas[s]
+    return cand, float(np.mean(rcl_sizes))
+\end{lstlisting}
+
+Linha a linha da Listagem~\ref{lst:construcao}. As linhas~6 e~7 iniciam a matriz final como cópia da base e a solução \code{cand} como matriz de zeros. A linha~8 recolhe o alcance apenas das linhas elegíveis, que serão as linhas da grade de escores. O laço da linha~10 repete-se \code{budget} vezes, uma inserção de POI por passo. As linhas~11 a~14 extraem as colunas de indicador correspondentes às dimensões de POI e calculam o mínimo, o máximo e a faixa de cada uma na matriz final corrente. A linha~15 aplica um piso na faixa para evitar divisão por zero quando a coluna é constante. A linha~16 calcula o fator de coluna, $w_d/(\max_d-\min_d)$. A linha~17 forma a grade de escores como o produto externo entre o alcance das linhas elegíveis e o fator de coluna, o que corresponde à Equação~\eqref{eq:surrogate}. As linhas~18 e~19 obtêm o maior e o menor escore e calculam o limiar da RCL segundo a Equação~\eqref{eq:rcl-max}. A linha~20 seleciona as posições (origem, dimensão) cujo escore está acima do limiar, e a linha~21 registra o tamanho dessa RCL. A linha~22 sorteia uma posição da RCL usando o gerador da semente, e as linhas~23 e~24 traduzem essa posição para a linha de origem real e a dimensão escolhida. A linha~25 insere uma unidade de POI na solução. As linhas~26 a~28 atualizam a matriz final de forma incremental: para a origem escolhida, somam o peso $\alpha_{20}$ de cada destino na coluna de indicador da dimensão inserida. A linha~29 devolve a solução construída e o tamanho médio da RCL.
+
+O escore da linha~17 é a estimativa que substitui o ganho exato. Mantendo pesos e faixas fixos, o ganho marginal de inserir uma unidade em (origem $h$, dimensão $d$) sobre a soma do IQC é aproximadamente
+\begin{equation}
+\Delta f(h,d) \;\approx\; \frac{w_d}{\max_d - \min_d}\;\sum_t \alpha_{20}(h,t)
+\;=\; \frac{w_d}{\max_d - \min_d}\; \text{alcance}(h).
+\label{eq:surrogate}
+\end{equation}
+A dedução vem de observar que aumentar o indicador $d$ em um destino $t$ por $\alpha_{20}(h,t)$ aumenta o IQC daquele destino em $w_d \cdot \alpha_{20}(h,t)/(\max_d - \min_d)$; somando sobre os destinos alcançáveis a partir de $h$ chega-se à Equação~\eqref{eq:surrogate}. A estimativa é separável em um fator de linha, $\text{alcance}(h)$, e um fator de coluna, $w_d/(\max_d-\min_d)$, o que permite montar a grade inteira em uma operação de matriz, sem nenhuma avaliação da função objetivo. Os pesos $w_d$ ficam fixos, mas as faixas são recalculadas a cada passo (linhas~12 a~16); conforme uma dimensão é preenchida, sua faixa cresce e seu fator de coluna cai, o que produz retornos decrescentes e espalha as inserções entre as dimensões.
+
+O parâmetro $\alpha$ da linha~19 é sorteado de maneira uniforme em $[0,1]$ a cada iteração do GRASP, conforme a segunda alternativa da Seção~\ref{sec:grasp-teoria}. Optou-se por essa estratégia, e não por um $\alpha$ fixo, para introduzir diversidade sem depender de ajuste. O GRASP Reativo foi considerado, mas não adotado nesta versão, por acrescentar parâmetros e código sem necessidade para o objetivo da comparação.
+
+\subsection{Fase de busca local linha a linha}
+
+A busca local não foi reescrita: a implementação importa e usa o mesmo operador do ILS. Como os dois métodos passam a compartilhar exatamente o mesmo operador, a diferença entre eles fica isolada na construção e no caráter multi-start do GRASP, contra a perturbação no ILS. O operador tem duas partes: o sorteio de um movimento de realocação e o laço de primeira melhora.
+
+\begin{lstlisting}[language=Python,caption={Sorteio de um movimento de realocação viável.},label={lst:move}]
+def _sample_feasible_relocation_move(cand, rng, allowed_rows,
+                                     preserve_dimension=True):
+    src_positions = np.argwhere(cand[allowed_rows, :] > 0)
+    if src_positions.size == 0:
+        return None
+    n_cols = cand.shape[1]
+    n_rows = allowed_rows.shape[0]
+    for _ in range(12):
+        i = int(rng.integers(0, len(src_positions)))
+        src_row_local, src_col = src_positions[i]
+        src_row = int(allowed_rows[src_row_local])
+        tgt_row = int(allowed_rows[rng.integers(0, n_rows)])
+        tgt_col = int(src_col) if preserve_dimension else int(rng.integers(0, n_cols))
+        if src_row == tgt_row and src_col == tgt_col:
+            continue
+        return src_row, src_col, tgt_row, tgt_col
+    return None
+\end{lstlisting}
+
+Na Listagem~\ref{lst:move}, a linha~3 lista as posições da solução, restritas às linhas elegíveis, que já têm ao menos um POI; são as origens possíveis do movimento. As linhas~4 e~5 abortam se não houver nenhuma. O laço da linha~8 tenta até doze vezes montar um movimento válido. A linha~9 sorteia uma posição de origem, e as linhas~10 e~11 recuperam a linha e a coluna dessa origem. A linha~12 sorteia a linha de destino entre as elegíveis. A linha~13 define a coluna de destino: quando \code{preserve\_dimension} é verdadeiro, mantém-se a mesma dimensão da origem, o que é o modo usado aqui. As linhas~14 e~15 descartam o movimento nulo, em que origem e destino coincidem. A linha~16 devolve o movimento como a quádrupla (linha de origem, coluna de origem, linha de destino, coluna de destino).
+
+\begin{lstlisting}[language=Python,caption={Busca local por primeira melhora.},label={lst:ls}]
+def _run_local_search_first_improvement(cand, state, rng, value,
+        max_steps, neighbor_sample, allowed_rows, eps,
+        preserve_dimension=True):
+    accepted = 0
+    for _ in range(max_steps):
+        improved = False
+        for _ in range(neighbor_sample):
+            move = _sample_feasible_relocation_move(
+                cand, rng, allowed_rows, preserve_dimension)
+            if move is None:
+                break
+            sr, sc, tr, tc = move
+            cand[sr, sc] -= 1.0
+            cand[tr, tc] += 1.0
+            trial = objective_function(
+                build_final_indicator_matrix_nd(cand, state))["objective_value"]
+            if trial > value + eps:
+                value = trial
+                accepted += 1
+                improved = True
+                break
+            cand[tr, tc] -= 1.0
+            cand[sr, sc] += 1.0
+        if not improved:
+            break
+    return value, accepted
+\end{lstlisting}
+
+Na Listagem~\ref{lst:ls}, o laço externo da linha~5 executa até \code{max\_steps} passos de melhora. A cada passo, o laço interno da linha~7 sorteia até \code{neighbor\_sample} vizinhos. A linha~8 obtém um movimento; se não houver movimento viável, a linha~11 interrompe. As linhas~13 e~14 aplicam o movimento na solução, tirando uma unidade da origem e pondo uma no destino. As linhas~15 e~16 avaliam a solução alterada com a função objetivo verdadeira, o que conta como uma avaliação. A linha~17 testa se houve melhora acima de uma tolerância. Se sim, as linhas~18 a~21 aceitam o movimento, registram a aceitação e saem do laço interno, o que caracteriza a estratégia de primeira melhora: aceita-se o primeiro vizinho que melhore, sem varrer os demais. Se não houve melhora, as linhas~22 e~23 desfazem o movimento, deixando a solução como estava. Quando um passo inteiro do laço externo não encontra nenhuma melhora, a linha~25 encerra a busca. A vizinhança completa é grande, por isso o operador usa amostragem em vez de examinar todos os vizinhos; essa é a estratégia de vizinhança restrita descrita na teoria.
+
+\subsection{O laço GRASP por semente}
+
+O laço por semente segue o template do Algoritmo~\ref{alg:grasp}, com o critério de parada por orçamento de avaliações. O Algoritmo~\ref{alg:grasp-impl} descreve o procedimento implementado.
+
+\begin{algorithm}[t]
+\caption{GRASP implementado, por semente (maximização de $\sum \text{IQC}$)}
+\label{alg:grasp-impl}
+\begin{algorithmic}[1]
+\Procedure{GRASP-Semente}{semente}
+  \State inicialize o gerador pseudoaleatório com \emph{semente}
+  \State $f^\ast \gets -\infty$; \quad avaliacoes $\gets 0$; \quad iteracoes $\gets 0$; \quad sem\_melhora $\gets 0$
+  \State pré-compile pesos base e alcance por origem \Comment{Listagem~\ref{lst:surrogate}}
+  \While{avaliacoes $< 30000$ \textbf{e} iteracoes $< 500$ \textbf{e} sem\_melhora $< 80$}
+    \State iteracoes $\gets$ iteracoes $+ 1$
+    \State $\alpha \gets$ valor uniforme em $[0,1]$
+    \State $S \gets$ ConstrucaoGulosaAleatorizada($\alpha$) \Comment{Listagem~\ref{lst:construcao}; sem avaliações}
+    \State avalie $f(S)$; \quad avaliacoes $\gets$ avaliacoes $+ 1$
+    \State $S \gets$ BuscaLocalPrimeiraMelhora($S$) \Comment{Listagem~\ref{lst:ls}; acumula avaliações}
+    \If{$f(S) > f^\ast$}
+      \State $f^\ast \gets f(S)$; \quad $S^\ast \gets S$; \quad sem\_melhora $\gets 0$; \quad registre $\alpha$
+    \Else
+      \State sem\_melhora $\gets$ sem\_melhora $+ 1$
+    \EndIf
+    \State registre a trajetória da iteração
+  \EndWhile
+  \State \Return $S^\ast$, $f^\ast$ e as métricas da execução
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+Linha a linha do Algoritmo~\ref{alg:grasp-impl}. A linha~2 inicializa o gerador da semente, que será usado em toda a execução. A linha~3 zera os contadores e coloca o melhor valor como menos infinito, já que é maximização. A linha~4 precompila os valores fixos. O laço da linha~5 continua enquanto nenhum dos três limites for atingido. A linha~7 sorteia $\alpha$ para a iteração. A linha~8 constrói uma solução, sem gastar avaliações. A linha~9 avalia a solução construída, o que gasta uma avaliação. A linha~10 aplica a busca local, que gasta uma avaliação por vizinho testado. As linhas~11 a~15 atualizam a melhor solução da execução: quando a solução após a busca local supera o melhor valor, ela é guardada, o contador de iterações sem melhora é zerado e o $\alpha$ da iteração é registrado; caso contrário, o contador de iterações sem melhora é incrementado. A linha~16 grava a trajetória, com os valores da iteração. A linha~18 devolve a melhor solução e as métricas.
+
+Como o GRASP clássico não guarda estado entre iterações, não há critério de aceitação entre uma iteração e a seguinte, ao contrário do ILS: cada construção parte do zero. O que se mantém é a melhor solução global da execução.
+
+\subsection{Sementes, reprodutibilidade e paralelismo}
+
+As sementes são lidas do arquivo \code{seeds.txt}, que contém $100$ inteiros. Cada semente corresponde a uma execução completa e independente do GRASP. A semente cumpre o papel do parâmetro \emph{semente} do Algoritmo~\ref{alg:grasp}: ela inicializa o gerador pseudoaleatório, que governa tanto o sorteio dentro da RCL na construção (linha~22 da Listagem~\ref{lst:construcao}) quanto a amostragem de vizinhos na busca local (Listagem~\ref{lst:move}). Com isso, cada execução é reproduzível, e a execução da semente $i$ do GRASP fica pareada com a execução da mesma semente $i$ do ILS, o que permite comparações par a par.
+
+Como as iterações do GRASP são independentes, e como as execuções por semente também são independentes entre si, elas são distribuídas entre processos paralelos com \code{ProcessPoolExecutor}. Isso corresponde à observação da Seção~\ref{sec:grasp-teoria} de que o GRASP é adequado a implementações paralelas pela independência de suas iterações. O resultado por semente não depende do paralelismo, porque cada execução usa seu próprio gerador determinístico.
+
+\subsection{Contabilização de avaliações e comparabilidade com o ILS}
+
+A comparação entre GRASP e ILS foi desenhada para ser feita sob o mesmo esforço computacional. A medida de esforço é o número de avaliações da função objetivo, e os dois métodos são limitados pelo mesmo teto de $30\,000$ avaliações por semente. Para que essa contabilização seja justa, a construção do GRASP não gasta avaliações: o escore surrogate da Equação~\eqref{eq:surrogate} é um cálculo vetorizado que não chama a função objetivo. Só contam como avaliações a da solução construída (linha~9 do Algoritmo~\ref{alg:grasp-impl}) e as da busca local. Como a construção é barata, cada iteração custa poucas avaliações, e o teto permite muitas iterações por semente, o que preserva o caráter multi-start. Os limites de $500$ iterações e de $80$ iterações sem melhora funcionam como salvaguardas e são os mesmos do ILS.
+
+\subsection{Exemplo de execução passo a passo}
+\label{sec:exemplo}
+
+Esta subseção executa o método sobre uma instância pequena, para mostrar os números em cada etapa. A instância tem quatro hexágonos, $h_0$ a $h_3$, e duas dimensões de POI, \code{S\_saude} e \code{S\_lazer}. Há ainda um terceiro indicador não sujeito a POI, \code{I\_seguranca}, que participa do IQC mas não recebe alocação. Apenas $h_0$ e $h_1$ são elegíveis a receber POI. O orçamento é de três POIs. A Tabela~\ref{tab:toy-base} mostra a matriz de indicadores de base.
+
+\begin{table}[h]
+\centering
+\caption{Matriz de base $x^{\text{base}}$ do exemplo.}
+\label{tab:toy-base}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Hexágono & \code{S\_saude} & \code{S\_lazer} & \code{I\_seguranca} \\
+\midrule
+$h_0$ & 0,20 & 0,10 & 0,50 \\
+$h_1$ & 0,10 & 0,30 & 0,40 \\
+$h_2$ & 0,00 & 0,00 & 0,60 \\
+$h_3$ & 0,30 & 0,20 & 0,50 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Os pares de impacto são: de $h_0$ para $h_0$ com peso $1{,}00$, para $h_2$ com $0{,}50$ e para $h_3$ com $0{,}25$; de $h_1$ para $h_1$ com $1{,}00$ e para $h_2$ com $0{,}50$. Somando os pesos que saem de cada origem, o alcance é $\text{alcance}(h_0) = 1{,}75$ e $\text{alcance}(h_1) = 1{,}50$. Os pesos CRITIC calculados sobre a matriz de base são $0{,}4877$ para \code{S\_saude}, $0{,}2474$ para \code{S\_lazer} e $0{,}2649$ para \code{I\_seguranca}; como dimensões de POI, ficam $w_{\text{saude}} = 0{,}4877$ e $w_{\text{lazer}} = 0{,}2474$.
+
+O objetivo da solução vazia é a linha de base. Os IQC por hexágono são $0{,}5400$, $0{,}4100$, $0{,}2649$ e $0{,}7851$, cuja soma é $f = 2{,}0000$.
+
+A seguir, uma construção com $\alpha = 0{,}5$. As Tabelas~\ref{tab:toy-step} resumem os três passos. Em cada passo, a grade de escores tem duas linhas ($h_0$ e $h_1$) e duas colunas (\code{S\_saude} e \code{S\_lazer}), e o limiar corta a RCL.
+
+\begin{table}[h]
+\centering
+\caption{Passos da construção no exemplo ($\alpha = 0{,}5$).}
+\label{tab:toy-step}
+\begin{tabular}{@{}clcccc@{}}
+\toprule
+Passo & \multicolumn{1}{c}{Faixas $(\max-\min)$} & Escore $h_0$ & Escore $h_1$ & Limiar & Escolha \\
+& \code{[S\_saude, S\_lazer]} & \code{[saude, lazer]} & \code{[saude, lazer]} & & \\
+\midrule
+1 & $[0{,}30,\ 0{,}30]$ & $[2{,}845,\ 1{,}443]$ & $[2{,}438,\ 1{,}237]$ & $2{,}041$ & $h_1$, \code{S\_saude} \\
+2 & $[0{,}90,\ 0{,}30]$ & $[0{,}948,\ 1{,}443]$ & $[0{,}813,\ 1{,}237]$ & $1{,}128$ & $h_1$, \code{S\_lazer} \\
+3 & $[0{,}90,\ 1{,}20]$ & $[0{,}948,\ 0{,}361]$ & $[0{,}813,\ 0{,}309]$ & $0{,}629$ & $h_1$, \code{S\_saude} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+No passo~1, todas as colunas de POI têm faixa $0{,}30$. Os fatores de coluna são $0{,}4877/0{,}30 = 1{,}626$ para \code{S\_saude} e $0{,}2474/0{,}30 = 0{,}825$ para \code{S\_lazer}. Multiplicando pelos alcances, o maior escore é $1{,}75 \times 1{,}626 = 2{,}845$, em $(h_0, \code{S\_saude})$, e o menor é $1{,}237$, em $(h_1, \code{S\_lazer})$. O limiar $2{,}845 - 0{,}5\,(2{,}845 - 1{,}237) = 2{,}041$ deixa na RCL as duas posições da coluna \code{S\_saude}: $(h_0, \code{S\_saude})$ com $2{,}845$ e $(h_1, \code{S\_saude})$ com $2{,}438$. O sorteio, com a semente do exemplo, escolhe $(h_1, \code{S\_saude})$. Note que a escolha gulosa pura teria pego $(h_0, \code{S\_saude})$, de escore maior; foi a aleatorização da RCL que levou a solução para $h_1$.
+
+No passo~2, inserir um POI de \code{S\_saude} em $h_1$ elevou os valores dessa coluna nos destinos de $h_1$, o que aumentou a faixa de \code{S\_saude} de $0{,}30$ para $0{,}90$ e reduziu seu fator de coluna de $1{,}626$ para $0{,}542$. Com isso, a coluna \code{S\_lazer} passou a ter os maiores escores, e a RCL ficou com as duas posições de \code{S\_lazer}. O sorteio escolhe $(h_1, \code{S\_lazer})$. Esse é o efeito de retornos decrescentes: preencher uma dimensão reduz o interesse por ela nos passos seguintes.
+
+No passo~3, agora a faixa de \code{S\_lazer} subiu para $1{,}20$, e \code{S\_saude} volta a ter os maiores escores. A RCL fica com as duas posições de \code{S\_saude}, e o sorteio escolhe de novo $(h_1, \code{S\_saude})$. A solução construída aloca dois POIs de \code{S\_saude} e um de \code{S\_lazer}, todos em $h_1$.
+
+Avaliando essa solução com a função objetivo verdadeira, a matriz final tem $h_1$ com \code{S\_saude} igual a $2{,}1$ e \code{S\_lazer} igual a $1{,}3$, e $h_2$ com \code{S\_saude} igual a $1{,}0$ e \code{S\_lazer} igual a $0{,}5$, por causa da propagação de $h_1$ para os destinos $h_1$ e $h_2$. Os IQC por hexágono passam a $0{,}2341$, $0{,}5318$, $0{,}6713$ e $0{,}2694$, cuja soma é $f = 1{,}7066$.
+
+Vale observar que a soma caiu em relação à linha de base, de $2{,}0000$ para $1{,}7066$. Isso acontece porque concentrar os POIs em um único hexágono eleva muito o máximo das colunas \code{S\_saude} e \code{S\_lazer}; como a normalização é min--max, esse máximo alto empurra para baixo os valores normalizados de todos os outros hexágonos, e o ganho no hexágono alocado não compensa a perda nos demais. Esse resultado mostra duas coisas. Primeiro, o escore surrogate é apenas uma estimativa para ordenar candidatos, e não a medida real de qualidade; a solução construída pode até piorar o objetivo. Segundo, é a busca local, avaliada pela função verdadeira, que corrige esse tipo de situação.
+
+A busca local parte da solução construída, com dois POIs de \code{S\_saude} e um de \code{S\_lazer} em $h_1$. Um dos movimentos possíveis é transferir uma unidade de \code{S\_saude} de $h_1$ para $h_0$, mantendo a dimensão. Avaliando, a soma do IQC passa de $1{,}7066$ para $2{,}0465$, um ganho de $+0{,}3399$; como é o primeiro movimento testado que melhora, ele é aceito. Outro movimento, transferir a unidade de \code{S\_lazer} de $h_1$ para $h_0$, levaria a soma de $1{,}7066$ para $1{,}6591$, uma piora de $-0{,}0475$, e seria desfeito. Depois do movimento aceito, a solução já supera a linha de base, com $2{,}0465$ contra $2{,}0000$, porque distribuir os POIs entre $h_0$ e $h_1$ reduz a concentração e melhora o equilíbrio das colunas. A busca local continuaria testando outros movimentos até não encontrar melhora, e a melhor solução da iteração seria comparada com a melhor da execução.
+
+\subsection{Artefatos de saída e registros}
+
+A saída do GRASP reproduz a organização usada pelo ILS, trocando apenas a raiz \code{results/ils/} por \code{results/grasp/}. Para cada execução, os arquivos ficam sob \code{results/grasp/<localidade>/<perfil>/<dataset>/<run\_id>/}, com três partes. Em \code{config/} guarda-se \code{experiment\_config.json}, com os parâmetros da execução. Em \code{summary/} guardam-se \code{runs\_summary.csv} (uma linha por semente), \code{summary\_stats.json} (estatísticas agregadas sobre as sementes), \code{global\_best\_allocation.csv} (a melhor alocação encontrada) e \code{method\_result.json}. Em \code{seed\_runs/seed\_XXXXXX/} guardam-se, por semente, \code{trajectory.csv} (uma linha por iteração), \code{best\_allocation.csv} e \code{run\_metrics.json}.
+
+As colunas usadas na comparação têm os mesmos nomes das colunas do ILS, o que permite concatenar diretamente os resultados dos dois métodos em uma análise. São exemplos \code{seed}, \code{best\_objective\_value}, \code{delta\_abs\_vs\_baseline}, \code{delta\_pct\_vs\_baseline}, \code{iterations}, \code{evaluations}, \code{runtime\_seconds} e \code{stopping\_reason}. Além dessas, a saída do GRASP traz colunas próprias do método, como \code{alpha\_used} e \code{rcl\_size\_mean} por iteração, e \code{construction\_sum\_iqc} e \code{after\_ls\_sum\_iqc}, que separam o valor da solução construída do valor após a busca local. Os registros em tela seguem o mesmo padrão do ILS, com linhas de início, de progresso por iteração e de encerramento por semente, controladas por variáveis de ambiente.
+
+\subsection{Parâmetros e configuração}
+
+A Tabela~\ref{tab:parametros} lista os principais parâmetros da implementação, seus valores padrão e a variável de ambiente que permite alterá-los sem mexer no código. Os valores padrão foram escolhidos para coincidir com os do ILS onde os dois métodos compartilham o mesmo significado, de modo a manter a comparação sob as mesmas condições.
+
+\begin{table}[h]
+\centering
+\caption{Parâmetros da implementação do GRASP.}
+\label{tab:parametros}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Parâmetro & Padrão & Variável de ambiente \\
+\midrule
+Máximo de avaliações & $30\,000$ & \code{GRASP\_MAX\_EVALUATIONS} \\
+Máximo de iterações & $500$ & \code{GRASP\_MAX\_ITERATIONS} \\
+Máximo sem melhora & $80$ & \code{GRASP\_MAX\_NO\_IMPROVE} \\
+Amostra de vizinhos na busca local & $64$ & \code{GRASP\_LS\_NEIGHBOR\_SAMPLE} \\
+Passos máximos de busca local & $25$ & \code{GRASP\_LS\_MAX\_STEPS} \\
+Estratégia de $\alpha$ & \code{random} & \code{GRASP\_ALPHA\_MODE} \\
+$\alpha$ fixo (quando aplicável) & $0{,}2$ & \code{GRASP\_ALPHA\_FIXED} \\
+Processos paralelos & automático & \code{GRASP\_SEED\_PARALLEL\_WORKERS} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Limitações e decisões de projeto}
+
+A principal aproximação da implementação está na função gulosa da construção. O escore da Equação~\eqref{eq:surrogate} não é o ganho exato, e sim uma estimativa que mantém os pesos CRITIC fixos e corrige a saturação apenas de forma aproximada, pela atualização das faixas por coluna. Essa foi uma escolha deliberada, justificada pela não separabilidade da função objetivo e pelo custo proibitivo da construção gulosa exata, e é coerente com a prática, descrita na teoria, de usar estimativas rápidas de valor de movimento para montar listas de candidatos. O valor real de toda solução é sempre calculado pela função objetivo verdadeira; a estimativa influencia apenas em quais pares recebem POIs durante a construção, não na medida de qualidade usada para aceitar ou comparar soluções. O exemplo da Seção~\ref{sec:exemplo} deixa isso explícito: a solução construída chegou a piorar o objetivo, e foi a busca local, guiada pela função verdadeira, que recuperou e ultrapassou a linha de base.
+
+Uma consequência do escore separável é que hexágonos de alcance alto tendem a ser preferidos de forma persistente, já que o fator de linha $\text{alcance}(h)$ não muda ao longo da construção. A diversidade vem de três fontes: o sorteio de $\alpha$ e da posição na RCL, a atualização das faixas por coluna, que redistribui as inserções entre dimensões, e o caráter multi-start com muitas sementes. A busca local, por fim, refina a solução dentro de cada dimensão. Outras estratégias descritas na Seção~\ref{sec:grasp-teoria}, como o GRASP Reativo e o path-relinking, ficaram fora desta versão por serem extensões que não pertencem ao template clássico; elas são objeto de um método distinto no projeto.
+
+\begin{thebibliography}{9}
+\bibitem{resendeRibeiro2008}
+M.~G.~C. Resende e C.~C. Ribeiro.
+\newblock GRASP.
+\newblock AT\&T Labs Research Technical Report, 2008.
+\end{thebibliography}
+
+\end{document}

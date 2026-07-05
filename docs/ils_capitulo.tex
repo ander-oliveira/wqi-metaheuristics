@@ -1,0 +1,502 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  frame=single,
+  framesep=4pt,
+  xleftmargin=18pt,
+  showstringspaces=false
+}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{Iterated Local Search (ILS) para a otimização do Índice de Qualidade Caminhável (IQC):\\ método clássico, implementação e análise dos resultados}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{ILS}
+\label{sec:ils-teoria}
+
+Esta seção descreve o Iterated Local Search na sua forma clássica, seguindo a apresentação de Lourenço, Martin e Stützle~\cite{lourenco2003ils}. O objetivo é registrar o método como ele foi proposto, sem ainda tratar do problema desta tese. As decisões de adaptação ficam para a Seção~\ref{sec:ils-projeto}, e a análise dos resultados obtidos com os dados do projeto, para a Seção~\ref{sec:ils-analise}.
+
+\subsection{Visão geral}
+
+O ILS é uma metaheurística que trabalha sobre um algoritmo de busca local já existente, tratado como uma rotina que recebe uma solução e devolve um ótimo local. A ideia central é construir uma sequência de soluções geradas por essa busca local, de modo que a sequência leve a soluções bem melhores do que as obtidas por tentativas aleatórias independentes. Dois pontos definem o método: existe uma única cadeia de soluções sendo percorrida, o que exclui métodos baseados em população; e a busca por soluções melhores ocorre em um espaço reduzido, definido pela saída da busca local.
+
+Para formalizar, seja $f$ a função de custo de um problema de otimização combinatória, a ser minimizada, e seja $S$ o conjunto das soluções. A busca local, aqui chamada de \code{LocalSearch}, mapeia uma solução qualquer para um ótimo local, ou seja, define uma aplicação de $S$ no conjunto menor $S^\ast$ dos ótimos locais. O ILS percorre uma caminhada dentro de $S^\ast$: a partir de um ótimo local corrente, aplica uma perturbação, roda a busca local sobre o resultado, chega a um novo ótimo local e decide, por um critério de aceitação, se aceita ou não o novo ponto. A força do método está nessa amostragem enviesada do conjunto dos ótimos locais, que é muito melhor do que a amostragem aleatória.
+
+O motivo pelo qual isso funciona aparece quando se compara a distribuição dos custos. Se sortearmos soluções ao acaso em $S$ e ótimos locais em $S^\ast$, a distribuição dos custos dos ótimos locais tem média e variância menores. Portanto vale a pena usar a busca local em vez de amostrar $S$ diretamente. Em instâncias grandes, porém, a distribuição dos custos dos ótimos locais fica muito concentrada em torno da média, e reiniciar a busca local de pontos aleatórios (o chamado \emph{random restart}) passa a ter chance cada vez menor de encontrar as soluções muito boas, que existem mas são raras. Para alcançá-las é preciso uma amostragem enviesada, e é isso que o ILS faz ao caminhar de um ótimo local para outro próximo em vez de recomeçar do zero.
+
+\subsection{Os quatro componentes}
+
+O ILS é descrito por quatro componentes, e a arquitetura de alto nível aparece no Algoritmo~\ref{alg:ils}. \code{GenerateInitialSolution} produz a solução inicial. \code{LocalSearch} leva uma solução a um ótimo local. \code{Perturbation} modifica o ótimo local corrente, produzindo um ponto intermediário. \code{AcceptanceCriterion} decide se o novo ótimo local passa a ser o corrente. O termo \emph{history} indica que perturbação e aceitação podem depender do histórico da busca.
+
+\begin{algorithm}[t]
+\caption{Iterated Local Search (minimização)}
+\label{alg:ils}
+\begin{algorithmic}[1]
+\State $s_0 \gets$ \Call{GenerateInitialSolution}{}
+\State $s^\ast \gets$ \Call{LocalSearch}{$s_0$}
+\Repeat
+  \State $s' \gets$ \Call{Perturbation}{$s^\ast$, \emph{history}}
+  \State $s^{\ast\prime} \gets$ \Call{LocalSearch}{$s'$}
+  \State $s^\ast \gets$ \Call{AcceptanceCriterion}{$s^\ast$, $s^{\ast\prime}$, \emph{history}}
+\Until{condição de parada satisfeita}
+\end{algorithmic}
+\end{algorithm}
+
+Linha a linha do Algoritmo~\ref{alg:ils}: a linha~1 gera a solução inicial; a linha~2 leva essa solução a um ótimo local, que é o ponto de partida da caminhada; o laço das linhas~3 a~7 repete a perturbação (linha~4), a busca local sobre o ponto perturbado (linha~5) e o teste de aceitação (linha~6) até a parada. Se a perturbação e a aceitação não dependem do histórico, a caminhada não tem memória e é markoviana: a probabilidade de ir de um ótimo local a outro depende só desses dois pontos. A maior parte dos trabalhos com ILS é desse tipo, embora o uso de memória possa melhorar o desempenho.
+
+Uma observação prática do método: é possível desenvolver uma versão básica de ILS com pouco esforço. Basta começar de uma solução aleatória ou de uma construção gulosa; usar uma busca local disponível; usar como perturbação um movimento aleatório em uma vizinhança de ordem maior do que a da busca local; e, como aceitação, exigir que o custo diminua. Essa versão básica já costuma superar o random restart, e cada um dos quatro componentes pode depois ser refinado de forma modular.
+
+\subsection{Solução inicial}
+
+A busca local aplicada à solução inicial define o ponto de partida da caminhada. As escolhas usuais são uma solução aleatória ou uma solução de uma construção gulosa. A construção gulosa tem duas vantagens: combinada com a busca local, tende a produzir soluções finais melhores, e a busca local a partir dela costuma exigir menos passos, portanto menos tempo. A importância da solução inicial depende do tempo de execução: para execuções curtas ela pesa mais; para execuções longas, o efeito da solução inicial se dissipa se a caminhada explora bem o espaço dos ótimos locais. Quando o efeito da solução inicial persiste mesmo em execuções longas, isso é sinal de que a caminhada está tendo dificuldade em explorar, e é preciso rever perturbação e aceitação.
+
+\subsection{Perturbação}
+
+A limitação da descida local é ficar presa em ótimos locais piores que o global. O ILS escapa desses ótimos aplicando perturbações. A força de uma perturbação é o número de componentes da solução que ela modifica. Em geral, a busca local não deve conseguir desfazer a perturbação, senão a caminhada volta ao mesmo ótimo local. Um movimento aleatório em uma vizinhança de ordem maior do que a usada pela busca local costuma ser suficiente para isso.
+
+O tamanho da perturbação precisa de equilíbrio. Se for grande demais, o ILS passa a se comportar como random restart, e as soluções boas só aparecem com probabilidade muito baixa. Se for pequena demais, a busca local volta com frequência ao ótimo local recém-visitado, e a diversificação fica limitada. Para alguns problemas, uma força pequena e fixa basta; para outros, é preciso força maior, e a melhor força depende da instância. Isso motiva as perturbações adaptativas, em que a força é modificada durante a execução. Uma forma de fazer isso é explorar o histórico: aumentar a força quando a busca estaciona e reduzi-la quando volta a melhorar. A busca em vizinhança variável básica (VNS básico) é um exemplo de esquema que varia a força de forma sistemática. Vale ainda notar que a força da perturbação afeta a velocidade da busca local: perturbações fracas em geral levam a execuções mais rápidas da busca local, o que permite ao ILS percorrer muito mais ótimos locais do que o random restart no mesmo tempo.
+
+\subsection{Critério de aceitação}
+
+O critério de aceitação controla o equilíbrio entre intensificação e diversificação da caminhada em $S^\ast$. Dois casos extremos ilustram isso. O critério \code{Better} aceita apenas soluções melhores, o que é uma intensificação forte:
+\begin{equation}
+\text{Better}(s^\ast, s^{\ast\prime}) =
+\begin{cases}
+s^{\ast\prime} & \text{se } f(s^{\ast\prime}) < f(s^\ast),\\
+s^\ast & \text{caso contrário.}
+\end{cases}
+\label{eq:better}
+\end{equation}
+No extremo oposto está o passeio aleatório \code{RW}, que sempre aceita o novo ótimo local, favorecendo a diversificação:
+\begin{equation}
+\text{RW}(s^\ast, s^{\ast\prime}) = s^{\ast\prime}.
+\end{equation}
+Entre os dois há muitas escolhas intermediárias. O critério \code{LSMC}, do tipo recozimento simulado, aceita $s^{\ast\prime}$ sempre que é melhor e, quando é pior, aceita com probabilidade $\exp\!\big((f(s^\ast) - f(s^{\ast\prime}))/T\big)$, com $T$ uma temperatura. O critério \code{Restart} reinicia a busca de uma nova solução quando nenhuma melhora é encontrada por um número dado de iterações. Há forte interdependência entre a força da perturbação e o critério de aceitação, e uma regra prática do método é que, quando é preciso diversificar, costuma ser melhor aceitar várias perturbações pequenas do que uma perturbação grande.
+
+\subsection{Busca local e otimização global}
+
+A busca local é tratada como uma caixa-preta chamada muitas vezes. Em geral, quanto melhor a busca local, melhor o ILS correspondente, mas há um compromisso com o tempo: às vezes compensa usar uma busca local mais rápida e menos poderosa se ela pode ser aplicada muito mais vezes no mesmo tempo total. A varredura pode ser por primeira melhora ou por melhor melhora. Um cuidado importante é que a busca local não deve desfazer sistematicamente a perturbação. A otimização global do ILS é, na prática, um processo de refinar cada componente considerando os outros, porque a melhor perturbação depende da busca local e o melhor critério de aceitação depende das duas. O que se busca otimizar costuma ser a média, sobre execuções, do melhor custo encontrado em uma execução de duração fixa, e é preferível não ajustar o algoritmo a ponto de torná-lo sensível aos detalhes de uma instância específica.
+
+Em relação a outras metaheurísticas, o VNS básico pode ser visto como um ILS que usa o critério \code{Better} e uma forma sistemática de variar a força da perturbação. A diferença de filosofia é que o ILS tem como objetivo explícito construir uma caminhada no conjunto dos ótimos locais, enquanto o VNS parte da ideia de trocar de vizinhança de forma sistemática.
+
+\section{ILS no projeto}
+\label{sec:ils-projeto}
+
+Esta seção relaciona o método da Seção~\ref{sec:ils-teoria} com a implementação, feita no módulo \code{metaheuristics/methods/ils.py}. A cada componente da teoria corresponde uma decisão de código, e essas correspondências são explicitadas ao longo do texto.
+
+\subsection{O problema e a representação da solução}
+
+O projeto calcula, para cada hexágono H3 de uma região, onze indicadores de caminhabilidade e, a partir deles, o Índice de Qualidade Caminhável (IQC), com pesos obtidos pelo método CRITIC. A otimização aloca um orçamento fixo de pontos de interesse (POIs) para maximizar a soma do IQC sobre todos os hexágonos. Os POIs entram em sete dimensões (\code{S\_saude}, \code{S\_educacao}, \code{S\_abastecimento}, \code{S\_lazer}, \code{S\_servicos}, \code{T\_transporte}, \code{U\_urbanidade}). Um POI inserido em um hexágono de origem propaga impacto para hexágonos de destino segundo um peso $\alpha_{20}$, derivado do tempo de caminhada por um decaimento em cosseno. O orçamento é de $100$ POIs e a linha de base é a soma do IQC sem nenhuma alocação.
+
+Uma solução é uma matriz de inteiros não negativos, com uma linha por hexágono e uma coluna por dimensão de POI, cujos valores somam o orçamento e são não nulos apenas nas linhas de origem elegíveis. A função objetivo constrói a matriz final de indicadores a partir da linha de base e do impacto propagado,
+\begin{equation}
+x^{\text{final}}_{t,c} = x^{\text{base}}_{t,c} + \sum_{h} \alpha_{20}(h,t)\; q_{h,c},
+\label{eq:final-matrix}
+\end{equation}
+onde $q_{h,c}$ é a quantidade de POIs na origem $h$ e dimensão $c$; em seguida recalcula os pesos CRITIC e o IQC, e devolve a soma
+\begin{equation}
+f(S) = \sum_h \text{IQC}_h,
+\label{eq:objetivo}
+\end{equation}
+a ser maximizada. Essa é exatamente a mesma função objetivo usada pelos demais métodos do projeto.
+
+\subsection{Os quatro componentes no projeto}
+
+O mapeamento dos quatro componentes do ILS é o seguinte. \code{GenerateInitialSolution} é uma alocação espacial aleatória do orçamento entre pares (origem elegível, dimensão), uma por semente. \code{LocalSearch} é uma busca por primeira melhora com movimento de realocação que preserva a dimensão. \code{Perturbation} é uma realocação em blocos que também preserva a dimensão, com força adaptativa. \code{AcceptanceCriterion} é o critério \code{Better}, adaptado para maximização. Uma consequência de preservar a dimensão tanto na busca local quanto na perturbação é que a distribuição de POIs por dimensão fica fixada pela solução inicial de cada semente; a busca move POIs entre hexágonos dentro de cada dimensão, mas não entre dimensões.
+
+\subsection{Glossário de variáveis}
+
+A Tabela~\ref{tab:glossario} reúne os símbolos, os nomes no código e o significado de cada variável usada nos algoritmos.
+
+\renewcommand{\arraystretch}{1.25}
+\begin{longtable}{@{}p{2.6cm} p{4.4cm} p{7.2cm}@{}}
+\caption{Variáveis usadas na formulação e no código.}\label{tab:glossario}\\
+\toprule
+Símbolo & Nome no código & Significado \\
+\midrule
+\endfirsthead
+\toprule
+Símbolo & Nome no código & Significado \\
+\midrule
+\endhead
+$f(S)$ & \code{objective\_value} & soma do IQC da solução \\
+$B$ & \code{budget} & orçamento; número de POIs ($100$) \\
+$q_{h,d}$ & \code{candidate\_matrix} & solução; POIs na origem $h$, dimensão $d$ \\
+$x^{\text{base}}, x^{\text{final}}$ & \code{baseline\_matrix}, \code{final\_matrix} & indicadores antes e depois do impacto \\
+$\alpha_{20}(h,t)$ & \code{alpha\_values} & peso de impacto do par origem/destino \\
+--- & \code{allowed\_source\_rows} & hexágonos elegíveis a receber POI \\
+$s_0$ & \code{initial\_candidate\_matrix} & solução inicial (alocação aleatória) \\
+$s^\ast$ & \code{current\_candidate\_matrix} & ótimo local corrente da caminhada \\
+--- & \code{best\_candidate\_matrix} & melhor solução da execução \\
+--- & \code{current\_objective\_value} & valor de $s^\ast$ \\
+--- & \code{best\_objective\_value} & valor da melhor solução \\
+--- & movimento $(sr,sc,tr,tc)$ & realocar 1 POI de $(sr,sc)$ para $(tr,tc)$ \\
+--- & \code{perturbation\_strength} & força da perturbação (nº de blocos) \\
+--- & \code{perturbation\_block\_size} & POIs movidos por bloco \\
+--- & \code{adaptive\_perturbation} & se a força varia durante a execução \\
+--- & \code{no\_improve\_streak} & iterações seguidas sem melhorar a melhor solução \\
+--- & \code{local\_search\_neighbor\_sample} & vizinhos amostrados por passo de busca local \\
+--- & \code{local\_search\_max\_steps} & passos máximos de busca local \\
+--- & \code{evaluations} & avaliações reais da função objetivo \\
+--- & \code{iterations} & iterações ILS da execução \\
+--- & \code{max\_evaluations} & teto de avaliações ($30\,000$) \\
+--- & \code{max\_iterations} & teto de iterações ($500$) \\
+--- & \code{max\_no\_improve} & teto de iterações sem melhora ($80$) \\
+--- & \code{random\_generator} & gerador pseudoaleatório da semente \\
+\bottomrule
+\end{longtable}
+
+\subsection{Solução inicial e busca local linha a linha}
+
+A solução inicial de cada semente é uma alocação espacial aleatória: para cada um dos $100$ POIs, sorteiam-se uma origem elegível e uma dimensão, de forma determinística a partir da semente. Sobre essa solução aplica-se a busca local, que é o mesmo operador reutilizado pelo GRASP no projeto. Ele tem duas partes: o sorteio de um movimento de realocação e o laço de primeira melhora.
+
+\begin{lstlisting}[language=Python,caption={Sorteio de um movimento de realocação viável.},label={lst:move}]
+def _sample_feasible_relocation_move(cand, rng, allowed_rows,
+                                     preserve_dimension=True):
+    src_positions = np.argwhere(cand[allowed_rows, :] > 0)
+    if src_positions.size == 0:
+        return None
+    n_cols = cand.shape[1]
+    n_rows = allowed_rows.shape[0]
+    for _ in range(12):
+        i = int(rng.integers(0, len(src_positions)))
+        src_row_local, src_col = src_positions[i]
+        src_row = int(allowed_rows[src_row_local])
+        tgt_row = int(allowed_rows[rng.integers(0, n_rows)])
+        tgt_col = int(src_col) if preserve_dimension else int(rng.integers(0, n_cols))
+        if src_row == tgt_row and src_col == tgt_col:
+            continue
+        return src_row, src_col, tgt_row, tgt_col
+    return None
+\end{lstlisting}
+
+Na Listagem~\ref{lst:move}, a linha~3 lista as posições da solução, restritas às linhas elegíveis, que já têm ao menos um POI; são as origens possíveis. As linhas~4 e~5 abortam se não houver nenhuma. O laço da linha~8 tenta até doze vezes montar um movimento válido. A linha~9 sorteia uma origem; as linhas~10 e~11 recuperam sua linha e coluna. A linha~12 sorteia a linha de destino entre as elegíveis. A linha~13 fixa a coluna de destino igual à de origem quando \code{preserve\_dimension} é verdadeiro, que é o modo usado. As linhas~14 e~15 descartam o movimento nulo. A linha~16 devolve o movimento como a quádrupla (linha de origem, coluna de origem, linha de destino, coluna de destino).
+
+\begin{lstlisting}[language=Python,caption={Busca local por primeira melhora.},label={lst:ls}]
+def _run_local_search_first_improvement(cand, state, rng, value,
+        max_steps, neighbor_sample, allowed_rows, eps,
+        preserve_dimension=True):
+    accepted = 0
+    for _ in range(max_steps):
+        improved = False
+        for _ in range(neighbor_sample):
+            move = _sample_feasible_relocation_move(
+                cand, rng, allowed_rows, preserve_dimension)
+            if move is None:
+                break
+            sr, sc, tr, tc = move
+            cand[sr, sc] -= 1.0
+            cand[tr, tc] += 1.0
+            trial = objective_function(
+                build_final_indicator_matrix_nd(cand, state))["objective_value"]
+            if trial > value + eps:
+                value = trial
+                accepted += 1
+                improved = True
+                break
+            cand[tr, tc] -= 1.0
+            cand[sr, sc] += 1.0
+        if not improved:
+            break
+    return value, accepted
+\end{lstlisting}
+
+Na Listagem~\ref{lst:ls}, o laço externo da linha~5 executa até \code{max\_steps} passos de melhora. A cada passo, o laço interno da linha~7 sorteia até \code{neighbor\_sample} vizinhos. A linha~8 obtém um movimento; sem movimento viável, a linha~11 interrompe. As linhas~13 e~14 aplicam o movimento. As linhas~15 e~16 avaliam a solução alterada pela função objetivo verdadeira, o que conta como uma avaliação. A linha~17 testa a melhora acima de uma tolerância. Havendo melhora, as linhas~18 a~21 aceitam o movimento e saem do laço interno, o que caracteriza a primeira melhora: aceita-se o primeiro vizinho que melhora, sem varrer os demais. Sem melhora, as linhas~22 e~23 desfazem o movimento. Quando um passo inteiro não encontra melhora, a linha~25 encerra a busca. Como a vizinhança completa é grande, o operador usa amostragem, uma estratégia de vizinhança restrita.
+
+\subsection{Perturbação linha a linha}
+
+A perturbação é uma realocação em blocos que preserva a dimensão. A força é o número de blocos, e cada bloco move um número fixo de POIs (\code{block\_size}).
+
+\begin{lstlisting}[language=Python,caption={Perturbação em blocos que preserva a dimensão.},label={lst:pert}]
+def _apply_dimension_preserving_block_perturbation(cand, rng, strength,
+                                                   allowed_rows, block_size=2):
+    applied = 0
+    last_move = None
+    for _ in range(strength):
+        block_applied = 0
+        attempts = 0
+        while block_applied < block_size and attempts < max(12, block_size * 12):
+            attempts += 1
+            move = _sample_feasible_relocation_move(
+                cand, rng, allowed_rows, preserve_dimension=True)
+            if move is None:
+                break
+            sr, sc, tr, tc = move
+            if (last_move is not None and sr == last_move[2] and tr == last_move[0]
+                    and sc == last_move[1] and tc == last_move[3]):
+                continue
+            cand[sr, sc] -= 1.0
+            cand[tr, tc] += 1.0
+            applied += 1
+            block_applied += 1
+            last_move = move
+        if block_applied == 0:
+            break
+    return applied
+\end{lstlisting}
+
+Na Listagem~\ref{lst:pert}, o laço da linha~5 repete-se uma vez por bloco, ou seja, \code{strength} vezes. O laço interno da linha~8 aplica movimentos até completar o bloco (\code{block\_size} movimentos) ou esgotar as tentativas. A linha~10 sorteia um movimento de realocação preservando a dimensão. A linha~14 descarta o movimento que seria o inverso imediato do anterior, o que evita ciclos curtos, um cuidado recomendado pela teoria para perturbações que a busca local poderia desfazer. As linhas~16 e~17 aplicam o movimento; as linhas~18 a~20 atualizam os contadores. A linha~23 interrompe se um bloco não conseguiu aplicar nenhum movimento. Preservar a dimensão e mover mais de um POI por bloco cria uma perturbação de ordem maior do que o movimento único da busca local, de modo que a busca local não a desfaz com um só passo; isso atende à recomendação de que a busca local não deve desfazer a perturbação.
+
+\subsection{Aceitação, força adaptativa e o laço por semente}
+
+O critério de aceitação é o \code{Better} da Equação~\eqref{eq:better}, adaptado para maximização: aceita-se a solução após a busca local se seu valor supera o corrente. Sob esse critério a solução corrente só melhora, e a perturbação é sempre aplicada à melhor solução da caminhada. A força da perturbação é adaptativa: ao melhorar a melhor solução, a força volta ao valor base; ao estagnar, a força aumenta em uma unidade a cada bloco fixo de iterações sem melhora, até um teto. Esse esquema segue a ideia de perturbação adaptativa descrita na teoria, que aumenta a diversificação quando a intensificação estaciona. O Algoritmo~\ref{alg:ils-impl} descreve o procedimento implementado, para uma semente.
+
+\begin{algorithm}[t]
+\caption{ILS implementado, por semente (maximização de $\sum \text{IQC}$)}
+\label{alg:ils-impl}
+\begin{algorithmic}[1]
+\Procedure{ILS-Semente}{semente}
+  \State inicialize o gerador pseudoaleatório com \emph{semente}
+  \State $s_0 \gets$ alocação espacial aleatória do orçamento
+  \State $s^\ast \gets$ BuscaLocalPrimeiraMelhora($s_0$); \quad $f^\ast \gets f(s^\ast)$
+  \State melhor $\gets s^\ast$; \quad avaliacoes, iteracoes, sem\_melhora $\gets 0$; \quad força $\gets$ base
+  \While{avaliacoes $< 30000$ \textbf{e} iteracoes $< 500$ \textbf{e} sem\_melhora $< 80$}
+    \State iteracoes $\gets$ iteracoes $+ 1$
+    \State $s' \gets$ Perturbação($s^\ast$, força) \Comment{Listagem~\ref{lst:pert}}
+    \State $s^{\ast\prime} \gets$ BuscaLocalPrimeiraMelhora($s'$) \Comment{Listagem~\ref{lst:ls}}
+    \If{$f(s^{\ast\prime}) > f(s^\ast)$} \Comment{aceitação \code{Better}}
+      \State $s^\ast \gets s^{\ast\prime}$; \quad $f^\ast \gets f(s^{\ast\prime})$; \quad melhor $\gets s^\ast$
+      \State sem\_melhora $\gets 0$; \quad força $\gets$ base
+    \Else
+      \State sem\_melhora $\gets$ sem\_melhora $+ 1$
+      \If{adaptativa \textbf{e} sem\_melhora múltiplo de 10}
+        \State força $\gets \min(\text{força}+1,\ \text{teto})$
+      \EndIf
+    \EndIf
+  \EndWhile
+  \State \Return melhor, $f^\ast$ e as métricas da execução
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+Linha a linha do Algoritmo~\ref{alg:ils-impl}: a linha~3 gera a solução inicial; a linha~4 aplica a busca local, definindo o ponto de partida da caminhada; a linha~5 inicializa contadores e a força. O laço da linha~6 continua enquanto nenhum dos três limites for atingido. A linha~8 perturba a solução corrente; a linha~9 aplica a busca local sobre o ponto perturbado. A linha~10 testa a aceitação \code{Better}: se o novo ótimo local é melhor, as linhas~11 e~12 o adotam como corrente e melhor, zeram o contador de estagnação e devolvem a força ao valor base. Caso contrário, a linha~14 incrementa a estagnação e as linhas~15 e~16 aumentam a força quando a estagnação atinge um múltiplo do intervalo de adaptação. A linha~20 devolve a melhor solução e as métricas. As execuções por semente são independentes e rodam em processos paralelos.
+
+\subsection{Sementes, orçamento e parâmetros}
+
+As sementes são lidas de \code{seeds.txt} ($100$ inteiros); cada semente é uma execução completa e independente, com seu próprio gerador pseudoaleatório, que governa a alocação inicial, a amostragem de vizinhos na busca local e o sorteio de movimentos na perturbação. O critério de parada usa três limites: $30\,000$ avaliações da função objetivo, $500$ iterações e $80$ iterações sem melhora da melhor solução. A Tabela~\ref{tab:parametros} lista os parâmetros e as variáveis de ambiente que os controlam.
+
+\begin{table}[h]
+\centering
+\caption{Parâmetros da implementação do ILS.}
+\label{tab:parametros}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Parâmetro & Padrão & Variável de ambiente \\
+\midrule
+Máximo de avaliações & $30\,000$ & \code{ILS\_...\_MAX\_EVALUATIONS} \\
+Máximo de iterações & $500$ & --- \\
+Máximo sem melhora & $80$ & --- \\
+Força de perturbação (base) & $5$ & \code{ILS\_PERTURBATION\_STRENGTH} \\
+Tamanho do bloco & $2$ & \code{ILS\_PERTURBATION\_BLOCK\_SIZE} \\
+Perturbação adaptativa & sim & \code{ILS\_ADAPTIVE\_PERTURBATION} \\
+Intervalo de adaptação & $10$ & \code{ILS\_PERTURBATION\_ADAPT\_EVERY} \\
+Amostra de vizinhos & $64$ & --- \\
+Passos máximos de busca local & $25$ & --- \\
+Critério de aceitação & \code{better} & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+O valor base da força de perturbação no código é $5$. Os resultados analisados na Seção~\ref{sec:ils-analise} foram gerados com dois valores dessa força, $2$ e $10$, justamente para estudar o efeito desse parâmetro.
+
+\subsection{Exemplo de execução passo a passo}
+\label{sec:exemplo}
+
+Este exemplo executa os operadores do ILS sobre uma instância pequena, com quatro hexágonos $h_0$ a $h_3$, duas dimensões de POI (\code{S\_saude} e \code{S\_lazer}) e um terceiro indicador fixo (\code{I\_seguranca}), com apenas $h_0$ e $h_1$ elegíveis e orçamento de três POIs. Para focar a caminhada em uma dimensão, considere as alocações na dimensão \code{S\_saude}. Como a busca local preserva a dimensão e há duas origens elegíveis, as soluções alcançáveis são os quatro pares $(h_0, h_1)$ de contagens que somam três. A Tabela~\ref{tab:toy-ils} dá o valor da função objetivo de cada uma. A linha de base (sem POIs) vale $f = 2{,}0000$.
+
+\begin{table}[h]
+\centering
+\caption{Objetivo das soluções alcançáveis em \code{S\_saude} (orçamento 3).}
+\label{tab:toy-ils}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+$(h_0, h_1)$ em \code{S\_saude} & $(3,0)$ & $(2,1)$ & $(1,2)$ & $(0,3)$ \\
+\midrule
+$f$ & 1,8852 & 1,8605 & 2,0155 & 1,7397 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A solução inicial da semente coloca os três POIs em $h_1$, ou seja, $(0,3)$, com $f = 1{,}7397$. A busca local, por primeira melhora, realoca uma unidade de $h_1$ para $h_0$, chega a $(1,2)$ com $f = 2{,}0155$ e para, porque nenhum outro movimento único melhora ($(2,1)$ vale $1{,}8605$ e $(0,3)$ é pior). Esse é o ponto de partida $s^\ast$ da caminhada, já acima da linha de base.
+
+Na iteração seguinte, a perturbação realoca uma unidade dentro de \code{S\_saude}, levando a solução de $(1,2)$ de volta a $(0,3)$, com $f = 1{,}7397$. A busca local então sobe outra vez para $(1,2)$, com $f = 2{,}0155$. Pelo critério \code{Better}, o novo ótimo local não supera o corrente ($2{,}0155$ não é maior que $2{,}0155$), então a perturbação é rejeitada e a caminhada permanece em $(1,2)$. Neste exemplo mínimo há um único ótimo local alcançável em \code{S\_saude}, de modo que a perturbação retorna a ele; em instâncias reais, com muitos hexágonos, existem vários ótimos locais, e a perturbação permite alcançar ótimos diferentes, às vezes melhores. É esse o mecanismo que, ao longo de muitas iterações, produz os ganhos medidos na Seção~\ref{sec:ils-analise}.
+
+\section{Análise dos resultados}
+\label{sec:ils-analise}
+
+Esta seção analisa os resultados produzidos pela implementação do ILS. Todos os números vêm dos arquivos gravados em \code{results/ils/}.
+
+\subsection{Desenho experimental}
+
+Os experimentos cobrem cinco localidades (\code{av\_paulista}, \code{itajuba\_centro}, \code{metro\_ana\_rosa}, \code{milao\_italia}, \code{shinjuku\_toquio}) e três perfis de caminhada (\code{athlete}, \code{average\_adult}, \code{elderly}), totalizando quinze instâncias. Cada instância foi resolvida com $100$ sementes, e cada semente é uma execução completa e independente. Todas as execuções usaram o mesmo teto de $30\,000$ avaliações, o critério de aceitação \code{better}, a perturbação em blocos que preserva a dimensão (tamanho de bloco $2$) e a força adaptativa. Cada instância foi executada em duas configurações de força base de perturbação, $2$ e $10$, com as mesmas $100$ sementes, o que permite uma comparação pareada entre as duas forças. No total são $30$ execuções de $100$ sementes, ou seja, $3\,000$ execuções independentes.
+
+\subsection{Metodologia estatística}
+
+Para cada instância e configuração, as $100$ sementes são tratadas como uma amostra de $100$ observações independentes do valor final produzido pelo algoritmo. Reporta-se a média, o desvio padrão amostral (com $n-1$ no denominador), a mediana, o mínimo, o máximo, o intervalo interquartílico e um intervalo de confiança de $95\%$ para a média, calculado por $\bar{x} \pm t_{0{,}975;\,99}\, s/\sqrt{n}$, com $t_{0{,}975;\,99} \approx 1{,}984$. O coeficiente de variação (desvio padrão sobre média, em porcentagem) mede a dispersão relativa. A melhoria sobre a linha de base é medida em porcentagem, $100\,(f - f_{\text{base}})/f_{\text{base}}$.
+
+A comparação entre as forças de perturbação $2$ e $10$ é pareada: como as duas configurações usaram as mesmas sementes, compara-se, semente a semente, a diferença entre os valores finais. Aplica-se o teste de postos sinalizados de Wilcoxon, que é não paramétrico e não pressupõe normalidade, além de reportar a diferença média pareada com intervalo de confiança e a contagem de vitórias de cada força. Como há quinze testes, um por instância, aplica-se a correção de Holm aos $p$-valores para controlar a taxa de erro familiar. Comparações entre perfis ou entre localidades não são pareadas, porque envolvem instâncias diferentes com linhas de base diferentes, e por isso são descritas apenas de forma descritiva, na escala de melhoria porcentual.
+
+\subsection{Resultados descritivos}
+
+A Tabela~\ref{tab:desc} apresenta, para cada instância e força de perturbação, a linha de base, a média e o desvio padrão do valor final, a melhoria porcentual média sobre a base, o coeficiente de variação, a média de avaliações e a média de tempo. Em todas as trinta execuções, todas as $100$ sementes terminaram com valor acima da linha de base, ou seja, a fração de sementes que melhoraram a base foi de $100\%$ em todos os casos.
+
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}l l c c c c c c c@{}}
+\caption{Estatísticas descritivas por instância e força de perturbação ($s$). Baseline e valores finais em soma de IQC; $\Delta$IQC\% é a melhoria média sobre a base; CV\% é o coeficiente de variação; tempo em segundos.}\label{tab:desc}\\
+\toprule
+Localidade & Perfil & $s$ & Base & Média & Desvio & $\Delta$IQC\% & CV\% & Aval.\ méd. \\
+\midrule
+\endfirsthead
+\toprule
+Localidade & Perfil & $s$ & Base & Média & Desvio & $\Delta$IQC\% & CV\% & Aval.\ méd. \\
+\midrule
+\endhead
+av\_paulista & athlete & 2 & 54,00 & 59,04 & 0,436 & 9,33 & 0,74 & 30159 \\
+av\_paulista & athlete & 10 & 54,00 & 58,27 & 0,406 & 7,91 & 0,70 & 22120 \\
+av\_paulista & average\_adult & 2 & 47,06 & 51,08 & 0,307 & 8,56 & 0,60 & 30157 \\
+av\_paulista & average\_adult & 10 & 47,06 & 50,54 & 0,288 & 7,41 & 0,57 & 22418 \\
+av\_paulista & elderly & 2 & 38,68 & 42,12 & 0,211 & 8,90 & 0,50 & 30148 \\
+av\_paulista & elderly & 10 & 38,68 & 41,60 & 0,229 & 7,56 & 0,55 & 22655 \\
+itajuba\_centro & athlete & 2 & 30,23 & 49,60 & 1,313 & 64,07 & 2,65 & 29696 \\
+itajuba\_centro & athlete & 10 & 30,23 & 46,27 & 1,110 & 53,05 & 2,40 & 16466 \\
+itajuba\_centro & average\_adult & 2 & 25,41 & 43,55 & 1,578 & 71,36 & 3,62 & 30013 \\
+itajuba\_centro & average\_adult & 10 & 25,41 & 40,20 & 1,137 & 58,20 & 2,83 & 17672 \\
+itajuba\_centro & elderly & 2 & 22,75 & 35,67 & 1,376 & 56,75 & 3,86 & 30014 \\
+itajuba\_centro & elderly & 10 & 22,75 & 33,26 & 1,051 & 46,19 & 3,16 & 17772 \\
+metro\_ana\_rosa & athlete & 2 & 42,54 & 50,22 & 0,761 & 18,06 & 1,52 & 30176 \\
+metro\_ana\_rosa & athlete & 10 & 42,54 & 49,14 & 0,678 & 15,52 & 1,38 & 21705 \\
+metro\_ana\_rosa & average\_adult & 2 & 38,53 & 44,65 & 0,444 & 15,87 & 0,99 & 30150 \\
+metro\_ana\_rosa & average\_adult & 10 & 38,53 & 43,78 & 0,406 & 13,61 & 0,93 & 20934 \\
+metro\_ana\_rosa & elderly & 2 & 32,45 & 36,56 & 0,261 & 12,67 & 0,71 & 30129 \\
+metro\_ana\_rosa & elderly & 10 & 32,45 & 35,92 & 0,243 & 10,71 & 0,68 & 21135 \\
+milao\_italia & athlete & 2 & 62,95 & 65,30 & 0,218 & 3,74 & 0,33 & 30132 \\
+milao\_italia & athlete & 10 & 62,95 & 64,83 & 0,172 & 3,00 & 0,27 & 22956 \\
+milao\_italia & average\_adult & 2 & 57,45 & 59,62 & 0,201 & 3,78 & 0,34 & 30136 \\
+milao\_italia & average\_adult & 10 & 57,45 & 59,22 & 0,180 & 3,09 & 0,30 & 23897 \\
+milao\_italia & elderly & 2 & 49,55 & 51,34 & 0,146 & 3,62 & 0,29 & 30156 \\
+milao\_italia & elderly & 10 & 49,55 & 51,10 & 0,135 & 3,12 & 0,27 & 25308 \\
+shinjuku\_toquio & athlete & 2 & 57,10 & 60,03 & 0,308 & 5,13 & 0,51 & 30122 \\
+shinjuku\_toquio & athlete & 10 & 57,10 & 59,61 & 0,271 & 4,40 & 0,46 & 21594 \\
+shinjuku\_toquio & average\_adult & 2 & 51,27 & 53,95 & 0,290 & 5,22 & 0,54 & 30166 \\
+shinjuku\_toquio & average\_adult & 10 & 51,27 & 53,56 & 0,256 & 4,47 & 0,48 & 22461 \\
+shinjuku\_toquio & elderly & 2 & 42,23 & 44,39 & 0,262 & 5,11 & 0,59 & 30162 \\
+shinjuku\_toquio & elderly & 10 & 42,23 & 44,08 & 0,247 & 4,39 & 0,56 & 25038 \\
+\bottomrule
+\end{longtable}
+
+Dois padrões aparecem na tabela. Primeiro, a melhoria porcentual sobre a base depende muito da instância, e essa dependência é explicada pelo valor da base: onde a base é baixa, como em \code{itajuba\_centro}, a melhoria é grande (da ordem de $57$ a $71\%$); onde a base já é alta, como em \code{milao\_italia}, a melhoria é pequena (da ordem de $3$ a $4\%$). Isso é esperado, porque há menos espaço para crescer quando o índice já parte de um valor alto. Segundo, a dispersão relativa é baixa: o coeficiente de variação fica abaixo de $4\%$ em todas as execuções e abaixo de $1\%$ na maioria, o que indica que o algoritmo é estável entre sementes, ou seja, sementes diferentes chegam a valores finais próximos.
+
+\subsection{Efeito da força de perturbação}
+
+A Tabela~\ref{tab:pareado} apresenta a comparação pareada entre as forças $2$ e $10$. A diferença média é sempre negativa (força $10$ menos força $2$), o que significa que a força $2$ produziu valores finais maiores em todas as quinze instâncias. As contagens de vitórias são quase sempre de $100$ a $0$ a favor da força $2$; apenas em duas instâncias de \code{itajuba\_centro} a força $10$ venceu em poucas sementes (três e duas de cem). O teste de Wilcoxon rejeita a hipótese de igualdade em todas as instâncias com $p$-valor da ordem de $10^{-18}$, e a correção de Holm mantém todas as quinze diferenças significativas ao nível de $5\%$. Vale observar que o $p$-valor de $\approx 3{,}9 \times 10^{-18}$ que se repete em várias linhas é o menor valor possível do teste para $n = 100$ quando todas as diferenças têm o mesmo sinal, o que ocorre nas instâncias com placar de $100$ a $0$.
+
+\begin{table}[h]
+\centering
+\caption{Comparação pareada entre força $10$ e força $2$ (mesmas sementes). Diferença média = $f(s{=}10) - f(s{=}2)$; vitórias contam sementes em que cada força foi melhor; $p$ é o teste de Wilcoxon; todas as diferenças são significativas após correção de Holm.}
+\label{tab:pareado}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}l l c c c c@{}}
+\toprule
+Localidade & Perfil & Dif.\ média & Vit.\ $s{=}2$ & Vit.\ $s{=}10$ & $p$ (Wilcoxon) \\
+\midrule
+av\_paulista & athlete & $-0{,}769$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+av\_paulista & average\_adult & $-0{,}539$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+av\_paulista & elderly & $-0{,}520$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+itajuba\_centro & athlete & $-3{,}330$ & 97 & 3 & $5{,}4\times10^{-18}$ \\
+itajuba\_centro & average\_adult & $-3{,}345$ & 98 & 2 & $4{,}8\times10^{-18}$ \\
+itajuba\_centro & elderly & $-2{,}404$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+metro\_ana\_rosa & athlete & $-1{,}078$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+metro\_ana\_rosa & average\_adult & $-0{,}872$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+metro\_ana\_rosa & elderly & $-0{,}636$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+milao\_italia & athlete & $-0{,}468$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+milao\_italia & average\_adult & $-0{,}401$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+milao\_italia & elderly & $-0{,}244$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+shinjuku\_toquio & athlete & $-0{,}416$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+shinjuku\_toquio & average\_adult & $-0{,}384$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+shinjuku\_toquio & elderly & $-0{,}305$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A conclusão é direta: com este conjunto de instâncias e este orçamento, a força de perturbação menor foi melhor em todos os casos. Na escala de melhoria porcentual agregada sobre as quinze instâncias, a força $2$ obteve média de $19{,}5\%$ e mediana de $8{,}9\%$, contra média de $16{,}2\%$ e mediana de $7{,}6\%$ da força $10$. A diferença entre a média e a mediana, e o desvio padrão alto (da ordem de $23$ pontos porcentuais), refletem a assimetria causada pelas instâncias de \code{itajuba\_centro}, cujas melhorias porcentuais muito grandes puxam a média para cima; por isso a mediana é uma medida mais representativa do caso típico.
+
+Esse resultado é coerente com a teoria da Seção~\ref{sec:ils-teoria}. Uma perturbação grande demais aproxima o ILS do random restart e reduz a chance de encontrar boas soluções, enquanto uma perturbação pequena mantém a caminhada produtiva. A recomendação de preferir várias perturbações pequenas a uma grande também vai nessa direção. O comportamento adaptativo reforça a leitura: partindo da força base $2$, a força final média ficou em torno de $4{,}4$ (máximo $10$), ou seja, o algoritmo só aumentou a força quando estagnou; partindo da base $10$, a força final média subiu para cerca de $17$ (máximo $18$), o que agrava o problema em vez de corrigi-lo.
+
+\subsection{Critério de parada e custo computacional}
+
+A distribuição dos motivos de parada explica o mecanismo por trás da diferença. A Tabela~\ref{tab:parada} mostra que, com força $2$, quase todas as execuções ($1461$ de $1500$) usaram o orçamento inteiro de avaliações, sinal de que a caminhada continuava melhorando; com força $10$, a maioria ($1237$ de $1500$) parou por estagnação, ao atingir $80$ iterações sem melhora. Em outras palavras, a força maior faz a busca estacionar antes, gastando menos avaliações e menos tempo, mas em um patamar pior. Isso se reflete no custo: a média de avaliações da força $2$ fica próxima do teto ($\approx 30\,000$), enquanto a da força $10$ varia entre cerca de $16\,000$ e $25\,000$; e o tempo médio da força $2$ é maior, na mesma proporção.
+
+\begin{table}[h]
+\centering
+\caption{Motivos de parada, contagem sobre as $1500$ execuções de cada força.}
+\label{tab:parada}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Motivo de parada & Força $2$ & Força $10$ \\
+\midrule
+Orçamento de avaliações esgotado (\code{max\_evaluations}) & 1461 & 263 \\
+Estagnação (\code{max\_no\_improve}) & 39 & 1237 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Convergência}
+
+Para observar a convergência, a Tabela~\ref{tab:conv} mostra, em duas instâncias representativas, a média sobre as sementes do melhor valor alcançado até certos números de avaliações, e a fração da melhoria total já obtida em cada marco. As duas instâncias são \code{itajuba\_centro}/\code{average\_adult}, de melhoria grande, e \code{milao\_italia}/\code{elderly}, de melhoria pequena. Em ambas, a maior parte do ganho ocorre cedo: por volta de $5\,000$ avaliações já se alcança perto de $90\%$ da melhoria total, e as avaliações restantes rendem ganhos pequenos. A força $10$ chega mais rápido a uma fração maior do seu próprio ganho, mas o seu patamar final é mais baixo do que o da força $2$, o que é consistente com a tabela descritiva.
+
+\begin{table}[h]
+\centering
+\caption{Convergência: média do melhor valor por número de avaliações, e fração da melhoria total (entre parênteses).}
+\label{tab:conv}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}l c c c c c@{}}
+\toprule
+Instância / força & 1.000 & 5.000 & 10.000 & 20.000 & 30.000 \\
+\midrule
+itajuba avg.\ ($s{=}2$) & 38,20 (70\%) & 41,34 (88\%) & 42,32 (93\%) & 43,20 (98\%) & 43,54 (100\%) \\
+itajuba avg.\ ($s{=}10$) & 36,83 (77\%) & 39,09 (93\%) & 39,84 (98\%) & 40,16 (100\%) & 40,20 (100\%) \\
+milao eld.\ ($s{=}2$) & 50,89 (75\%) & 51,19 (92\%) & 51,26 (96\%) & 51,32 (99\%) & 51,34 (100\%) \\
+milao eld.\ ($s{=}10$) & 50,77 (79\%) & 50,97 (92\%) & 51,04 (96\%) & 51,08 (99\%) & 51,10 (100\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Síntese}
+
+Os dados sustentam três conclusões. Primeiro, o ILS melhora a linha de base de forma consistente: em todas as quinze instâncias e todas as $100$ sementes, o valor final ficou acima da base, e a dispersão entre sementes é baixa, o que indica robustez. Segundo, a magnitude da melhoria depende da instância e, em particular, do valor da linha de base, com ganhos grandes onde a base é baixa e ganhos pequenos onde a base já é alta. Terceiro, a força de perturbação tem efeito claro e estatisticamente significativo: a força menor venceu a maior em todas as instâncias, com o comportamento adaptativo e a distribuição dos motivos de parada mostrando que a força maior leva à estagnação precoce. Esse conjunto de observações está alinhado com o que a teoria do ILS prevê sobre o papel da perturbação e sobre a preferência por perturbações pequenas.
+
+\begin{thebibliography}{9}
+\bibitem{lourenco2003ils}
+H.~R. Lourenço, O.~C. Martin e T. Stützle.
+\newblock Iterated Local Search.
+\newblock In F. Glover e G. Kochenberger (eds.), \emph{Handbook of Metaheuristics}, cap. 11, pp. 321--353. Kluwer Academic Publishers, 2003.
+\end{thebibliography}
+
+\end{document}
