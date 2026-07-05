@@ -69,6 +69,11 @@ CONV_INSTANCES = [("itajuba_centro", "average_adult"), ("milao_italia", "elderly
 ALPHA_SCATTER_INSTANCES = [("itajuba_centro", "average_adult"), ("milao_italia", "elderly")]
 CONSTR_LS_INSTANCE = ("metro_ana_rosa", "average_adult")
 INIT_BEST_INSTANCES = [("av_paulista", "elderly"), ("itajuba_centro", "average_adult")]
+# Instances for the paired GRASP-vs-ILS scatter (one win for each method).
+COMP_SCATTER_INSTANCES = [("av_paulista", "elderly"), ("itajuba_centro", "average_adult")]
+# Method colors used in every comparison figure.
+COL_ILS = BLUE
+COL_GRASP = AQUA
 
 # --------------------------------------------------------------------------- #
 # Every visible string, per language. Edit freely.                            #
@@ -102,6 +107,15 @@ LABELS = {
         "kurtosis": r"excesso de curtose ($g_2$)",
         "initial_obj": "objetivo da solução inicial",
         "best_obj": "melhor objetivo da execução",
+        "ils": "ILS", "grasp": "GRASP",
+        "paired_diff": "diferença pareada GRASP $-$ ILS (soma de IQC)",
+        "best_sum": "melhor soma de IQC",
+        "cum_seeds": "fração acumulada de sementes",
+        "evals_to_target": "avaliações até o alvo (escala log)",
+        "ils_axis": "melhor valor do ILS (por semente)",
+        "grasp_axis": "melhor valor do GRASP (por semente)",
+        "hex_used": "hexágonos com POI na melhor solução",
+        "reached": "alcançaram o alvo",
     },
     "en": {
         "loc": {"av_paulista": "Av. Paulista", "itajuba_centro": "Itajubá",
@@ -131,6 +145,15 @@ LABELS = {
         "kurtosis": r"excess kurtosis ($g_2$)",
         "initial_obj": "initial solution objective",
         "best_obj": "best objective of the run",
+        "ils": "ILS", "grasp": "GRASP",
+        "paired_diff": "paired difference GRASP $-$ ILS (IQC sum)",
+        "best_sum": "best IQC sum",
+        "cum_seeds": "cumulative fraction of seeds",
+        "evals_to_target": "evaluations to target (log scale)",
+        "ils_axis": "ILS best value (per seed)",
+        "grasp_axis": "GRASP best value (per seed)",
+        "hex_used": "hexagons with POIs in the best solution",
+        "reached": "reached the target",
     },
 }
 
@@ -206,16 +229,30 @@ def compute_iqc_arrays():
     return arrays, shape
 
 
+def evals_to_target(rdir, target):
+    """First eval count at which each seed reaches `target` (None = never)."""
+    out = []
+    for sd in sorted((rdir / "seed_runs").glob("seed_*")):
+        t = pd.read_csv(sd / "trajectory.csv", usecols=["eval_count", "best_sum_iqc"])
+        hit = t.loc[t["best_sum_iqc"] >= target, "eval_count"]
+        out.append(int(hit.iloc[0]) if len(hit) else None)
+    return out
+
+
 def build_cache(cache_dir, refresh):
     """Derived data that is slow to compute (trajectory scans, IQC re-evaluation)."""
     cache_dir.mkdir(parents=True, exist_ok=True)
     npz = cache_dir / "derived.npz"
     meta = cache_dir / "derived.json"
+    loc0, prof0 = CONV_INSTANCES[0]
+    required = ["grid", "alpha_pool", f"ttt|{loc0}|{prof0}|grasp"]
     if npz.exists() and meta.exists() and not refresh:
-        print("Using cached derived data (pass --refresh to recompute).")
         data = dict(np.load(npz))
-        info = json.load(open(meta, encoding="utf-8"))
-        return data, info
+        if all(k in data for k in required):
+            print("Using cached derived data (pass --refresh to recompute).")
+            info = json.load(open(meta, encoding="utf-8"))
+            return data, info
+        print("Cache is missing new keys; recomputing.")
 
     print("Computing derived data (trajectories + IQC re-evaluation)...")
     grasp = load_summaries("grasp")
@@ -231,6 +268,18 @@ def build_cache(cache_dir, refresh):
             data[f"conv|{loc}|{prof}|{key}|q25"] = q1
             data[f"conv|{loc}|{prof}|{key}|q75"] = q3
         print(f"  convergence: {loc}/{prof}")
+
+    # Evaluations-to-target: target = final mean of the weaker method.
+    for loc, prof in CONV_INSTANCES:
+        g_mean = grasp[(loc, prof)]["df"]["best_objective_value"].mean()
+        i_mean = ils2[(loc, prof)]["df"]["best_objective_value"].mean()
+        target = min(g_mean, i_mean)
+        gr = [v for v in evals_to_target(grasp[(loc, prof)]["dir"], target) if v is not None]
+        ir = [v for v in evals_to_target(ils2[(loc, prof)]["dir"], target) if v is not None]
+        data[f"ttt|{loc}|{prof}|grasp"] = np.asarray(gr, dtype=np.int64)
+        data[f"ttt|{loc}|{prof}|ils"] = np.asarray(ir, dtype=np.int64)
+        data[f"ttt|{loc}|{prof}|target"] = np.asarray([target])
+        print(f"  evals-to-target: {loc}/{prof}")
 
     arrays, shape = compute_iqc_arrays()
     data.update(arrays)
@@ -490,6 +539,153 @@ def fig_ils_init_best(I2, L, out, formats):
 
 
 # --------------------------------------------------------------------------- #
+# Comparison figures (GRASP vs ILS strength 2, paired on seeds)               #
+# --------------------------------------------------------------------------- #
+def fig_comp_box(G, I2, L, out, formats):
+    fig, ax = plt.subplots(figsize=(6.3, 3.3))
+    labels, xticks, centers = [], [], []
+    pos = 0.0
+    for loc in LOCS:
+        start = pos
+        for p in PROFS:
+            styled_box(ax, [I2[(loc, p)]["df"]["delta_pct_vs_baseline"].values], [pos], COL_ILS, 0.8)
+            styled_box(ax, [G[(loc, p)]["df"]["delta_pct_vs_baseline"].values], [pos + 0.9], COL_GRASP, 0.8)
+            xticks.append(pos + 0.45)
+            labels.append(L["prof_short"][p])
+            pos += 2.4
+        centers.append((start + pos - 2.4 + 0.9) / 2)
+        pos += 1.4
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(labels, fontsize=7)
+    ylim = ax.get_ylim()
+    for gi, loc in enumerate(LOCS):
+        ax.text(centers[gi], ylim[1] * 0.98, L["loc"][loc], ha="center", va="top",
+                fontsize=8, color=SEC)
+    ax.set_ylabel(L["improvement_pct"])
+    handles = [plt.Rectangle((0, 0), 1, 1, facecolor=c, alpha=0.55, edgecolor=SEC)
+               for c in (COL_ILS, COL_GRASP)]
+    ax.legend(handles, [L["ils"], L["grasp"]], loc="center right", fontsize=8)
+    ax.set_axisbelow(True)
+    save(fig, out, "comp_box", formats)
+
+
+def fig_comp_forest(G, I2, L, out, formats):
+    rows = []
+    for loc in LOCS:
+        for p in PROFS:
+            g = G[(loc, p)]["df"].set_index("seed")["best_objective_value"]
+            i = I2[(loc, p)]["df"].set_index("seed")["best_objective_value"]
+            d = (g - i).dropna().values
+            h = stats.t.ppf(0.975, len(d) - 1) * d.std(ddof=1) / np.sqrt(len(d))
+            rows.append((f"{L['loc'][loc]} - {L['prof'][p]}", d.mean(), h))
+    rows.sort(key=lambda r: r[1])
+    ys = np.arange(len(rows))
+    fig, ax = plt.subplots(figsize=(5.6, 3.6))
+    ax.axvline(0, color=MUT, lw=1, ls="--")
+    colors = [COL_GRASP if r[1] > 0 else COL_ILS for r in rows]
+    for y, (labl, m, h), c in zip(ys, rows, colors):
+        ax.errorbar([m], [y], xerr=[h], fmt="o", color=c, ms=4, elinewidth=1.2, capsize=0)
+    ax.set_yticks(ys)
+    ax.set_yticklabels([r[0] for r in rows], fontsize=7)
+    ax.set_xlabel(L["paired_diff"])
+    handles = [Line := plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=COL_GRASP, markersize=6),
+               plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=COL_ILS, markersize=6)]
+    ax.legend(handles, [f"{L['grasp']} >", f"{L['ils']} >"], loc="lower right", fontsize=8)
+    ax.set_axisbelow(True)
+    save(fig, out, "comp_forest", formats)
+
+
+def fig_comp_scatter(G, I2, L, out, formats):
+    fig, axes = plt.subplots(1, 2, figsize=(6.3, 3.0))
+    for ax, (loc, p) in zip(axes, COMP_SCATTER_INSTANCES):
+        g = G[(loc, p)]["df"].set_index("seed")["best_objective_value"]
+        i = I2[(loc, p)]["df"].set_index("seed")["best_objective_value"]
+        j = pd.concat([g.rename("g"), i.rename("i")], axis=1).dropna()
+        lims = [min(j.min()) - 0.3, max(j.max()) + 0.3]
+        ax.plot(lims, lims, color=MUT, lw=1, ls="--")
+        ax.scatter(j["i"], j["g"], s=9, color=COL_GRASP, alpha=0.6, linewidths=0)
+        ax.set_xlim(lims)
+        ax.set_ylim(lims)
+        ax.set_xlabel(L["ils_axis"])
+        ax.set_title(f"{L['loc'][loc]} / {L['prof'][p]}", loc="left")
+        ax.text(lims[0] + 0.15, lims[1] - 0.35, "y = x", fontsize=8, color=SEC)
+        ax.set_axisbelow(True)
+    axes[0].set_ylabel(L["grasp_axis"])
+    save(fig, out, "comp_scatter", formats)
+
+
+def fig_comp_convergence(data, L, out, formats):
+    grid = data["grid"]
+    fig, axes = plt.subplots(1, 2, figsize=(6.3, 2.7))
+    for ax, (loc, prof) in zip(axes, CONV_INSTANCES):
+        _conv_panel(ax, data, grid,
+                    [(f"conv|{loc}|{prof}|ils2", COL_ILS, L["ils"]),
+                     (f"conv|{loc}|{prof}|grasp", COL_GRASP, L["grasp"])], L,
+                    f"{L['loc'][loc]} / {L['prof'][prof]}")
+    axes[0].set_ylabel(L["best_sum_mean"])
+    axes[0].legend(loc="lower right", fontsize=8)
+    save(fig, out, "comp_convergence", formats)
+
+
+def fig_comp_ecdf(G, I2, L, out, formats):
+    fig, axes = plt.subplots(1, 2, figsize=(6.3, 2.8))
+    for ax, (loc, p) in zip(axes, CONV_INSTANCES):
+        for runs, color, lab in ((I2, COL_ILS, L["ils"]), (G, COL_GRASP, L["grasp"])):
+            x = np.sort(runs[(loc, p)]["df"]["best_objective_value"].values)
+            y = np.arange(1, len(x) + 1) / len(x)
+            ax.step(x, y, where="post", color=color, lw=1.6, label=lab)
+        ax.set_xlabel(L["best_sum"])
+        ax.set_title(f"{L['loc'][loc]} / {L['prof'][p]}", loc="left")
+        ax.set_axisbelow(True)
+    axes[0].set_ylabel(L["cum_seeds"])
+    axes[0].legend(loc="lower right", fontsize=8)
+    save(fig, out, "comp_ecdf", formats)
+
+
+def fig_comp_ttt(data, L, out, formats):
+    fig, axes = plt.subplots(1, 2, figsize=(6.3, 2.8))
+    for ax, (loc, p) in zip(axes, CONV_INSTANCES):
+        for key, color, lab in (("ils", COL_ILS, L["ils"]), ("grasp", COL_GRASP, L["grasp"])):
+            arr = np.sort(np.asarray(data[f"ttt|{loc}|{p}|{key}"], float))
+            frac = len(arr) / 100.0
+            if len(arr):
+                y = np.arange(1, len(arr) + 1) / 100.0
+                ax.step(arr, y, where="post", color=color, lw=1.6,
+                        label=f"{lab} ({frac:.0%} {L['reached']})")
+        ax.set_xscale("log")
+        ax.set_ylim(0, 1.02)
+        ax.set_xlabel(L["evals_to_target"])
+        ax.set_title(f"{L['loc'][loc]} / {L['prof'][p]}", loc="left")
+        ax.set_axisbelow(True)
+    axes[0].set_ylabel(L["cum_seeds"])
+    for ax in axes:
+        ax.legend(loc="lower right", fontsize=7)
+    save(fig, out, "comp_ttt", formats)
+
+
+def fig_comp_alloc(G, I2, L, out, formats):
+    rows = []
+    for loc in LOCS:
+        for p in PROFS:
+            def nhex(runs):
+                a = pd.read_csv(runs[(loc, p)]["dir"] / "summary" / "global_best_allocation.csv")
+                return a["h3_id"].nunique()
+            rows.append((f"{L['loc'][loc]} - {L['prof'][p]}", nhex(I2), nhex(G)))
+    ys = np.arange(len(rows))
+    fig, ax = plt.subplots(figsize=(5.6, 3.6))
+    for y, (labl, ni, ng) in zip(ys, rows):
+        ax.plot([ni, ng], [y, y], color=GRID, lw=1.6, zorder=1)
+    ax.scatter([r[1] for r in rows], ys, s=24, color=COL_ILS, zorder=3, label=L["ils"])
+    ax.scatter([r[2] for r in rows], ys, s=24, color=COL_GRASP, zorder=3, label=L["grasp"])
+    ax.set_yticks(ys)
+    ax.set_yticklabels([r[0] for r in rows], fontsize=7)
+    ax.set_xlabel(L["hex_used"])
+    ax.legend(loc="lower right", fontsize=8)
+    ax.set_axisbelow(True)
+    save(fig, out, "comp_alloc", formats)
+
+
+# --------------------------------------------------------------------------- #
 # Main                                                                         #
 # --------------------------------------------------------------------------- #
 def main():
@@ -533,6 +729,13 @@ def main():
         fig_skewkurt(info, "grasp", L, out, formats)
         fig_skewkurt(info, "ils", L, out, formats)
         fig_ils_init_best(I2, L, out, formats)
+        fig_comp_box(G, I2, L, out, formats)
+        fig_comp_forest(G, I2, L, out, formats)
+        fig_comp_scatter(G, I2, L, out, formats)
+        fig_comp_convergence(data, L, out, formats)
+        fig_comp_ecdf(G, I2, L, out, formats)
+        fig_comp_ttt(data, L, out, formats)
+        fig_comp_alloc(G, I2, L, out, formats)
 
     print("\nAll figures generated.")
 

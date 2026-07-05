@@ -3,7 +3,10 @@
     "allow": [
       "Bash(pdflatex -interaction=nonstopmode -halt-on-error grasp_capitulo.tex)",
       "Bash(pdflatex -interaction=nonstopmode -halt-on-error ils_capitulo.tex)",
-      "Bash(python \"C:/Users/ander/AppData/Local/Temp/claude/d--wqi-metaheuristics/6cb4f095-fb32-45c7-a35e-b75b011af99b/scratchpad/comp_stats.py\")"
+      "Bash(python \"C:/Users/ander/AppData/Local/Temp/claude/d--wqi-metaheuristics/6cb4f095-fb32-45c7-a35e-b75b011af99b/scratchpad/comp_stats.py\")",
+      "Bash(python -m compileall -q scripts/generate_figures.py)",
+      "Bash(pdflatex -interaction=nonstopmode -halt-on-error comparativo_ils_grasp.tex)",
+      "Bash(rm -f comp_build.log)"
     ]
   }
 }

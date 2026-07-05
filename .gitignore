@@ -6,3 +6,7 @@ data/dem/reprojected_*.tif
 venv/
 analysis/*
 .claude/
+docs/*.log
+docs/*.out
+docs/*.aux
+docs/*.pdf
