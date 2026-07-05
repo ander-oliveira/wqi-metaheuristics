@@ -12,7 +12,17 @@
 \usepackage{algpseudocode}
 \usepackage{listings}
 \usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,decorations.pathreplacing,calc}
 \usepackage[hidelinks]{hyperref}
+
+\tikzset{
+  bloco/.style={rectangle,rounded corners=2pt,draw=black!55,fill=black!4,align=center,minimum height=6.5mm,inner sep=2.2mm,font=\small},
+  decisao/.style={diamond,aspect=2.4,draw=black!55,fill=black!4,align=center,inner sep=0.8mm,font=\small},
+  seta/.style={-{Latex[length=2.1mm]},semithick,black!65},
+  rotulo/.style={font=\scriptsize,black!55,align=left},
+}
 
 \lstset{
   basicstyle=\ttfamily\footnotesize,
@@ -298,6 +308,67 @@ O critério de aceitação é o \code{Better} da Equação~\eqref{eq:better}, ad
 
 Linha a linha do Algoritmo~\ref{alg:ils-impl}: a linha~3 gera a solução inicial; a linha~4 aplica a busca local, definindo o ponto de partida da caminhada; a linha~5 inicializa contadores e a força. O laço da linha~6 continua enquanto nenhum dos três limites for atingido. A linha~8 perturba a solução corrente; a linha~9 aplica a busca local sobre o ponto perturbado. A linha~10 testa a aceitação \code{Better}: se o novo ótimo local é melhor, as linhas~11 e~12 o adotam como corrente e melhor, zeram o contador de estagnação e devolvem a força ao valor base. Caso contrário, a linha~14 incrementa a estagnação e as linhas~15 e~16 aumentam a força quando a estagnação atinge um múltiplo do intervalo de adaptação. A linha~20 devolve a melhor solução e as métricas. As execuções por semente são independentes e rodam em processos paralelos.
 
+\subsection{Fluxo de execução}
+
+A Figura~\ref{fig:ils-fluxo} resume o fluxo de uma execução por semente, e a Figura~\ref{fig:ils-anatomia} mostra como o orçamento de avaliações se distribui dentro de uma iteração. A perturbação não consome avaliações; a avaliação da solução perturbada consome uma; e a busca local consome uma avaliação por vizinho testado, até o limite de $25 \times 64 = 1\,600$.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=3.6mm and 6mm]
+\node[bloco] (seed) {semente $\rightarrow$ gerador pseudoaleatório};
+\node[bloco,below=of seed] (s0) {alocação espacial aleatória $s_0$ ($100$ POIs)};
+\node[bloco,below=of s0] (ev0) {avalia $f(s_0)$};
+\node[bloco,below=of ev0] (ls0) {busca local inicial $\rightarrow s^\ast$};
+\node[bloco,below=of ls0] (pert) {perturbação em blocos\\ (força corrente, preserva dimensão)};
+\node[bloco,below=of pert] (ev) {avalia $f(s')$};
+\node[bloco,below=of ev] (ls) {busca local por primeira melhora $\rightarrow s^{\ast\prime}$};
+\node[decisao,below=of ls] (dec) {$f(s^{\ast\prime}) > f(s^\ast)$?};
+\node[bloco,below left=4.5mm and -16mm of dec] (upd) {$s^\ast \gets s^{\ast\prime}$;\quad força $\gets$ base;\quad sem\_melhora $\gets 0$};
+\node[bloco,below right=4.5mm and -16mm of dec] (noimp) {sem\_melhora $+1$;\\ a cada $10$: força $+1$};
+\node[decisao,below=19mm of dec] (stop) {parar?};
+\node[bloco,below=of stop] (ret) {retorna a melhor solução e as métricas};
+\node[rotulo,right=2.5mm of pert] {$0$ avaliações};
+\node[rotulo,right=2.5mm of ev] {$+1$ avaliação};
+\node[rotulo,right=2.5mm of ls] {$+1$ a $+1\,600$ avaliações};
+\node[rotulo,right=2.5mm of stop] {aval.\ $\ge 30\,000$ \textbf{ou} iter.\ $\ge 500$\\ \textbf{ou} sem\_melhora $\ge 80$};
+\draw[seta] (seed) -- (s0);
+\draw[seta] (s0) -- (ev0);
+\draw[seta] (ev0) -- (ls0);
+\draw[seta] (ls0) -- (pert);
+\draw[seta] (pert) -- (ev);
+\draw[seta] (ev) -- (ls);
+\draw[seta] (ls) -- (dec);
+\draw[seta] (dec) -| node[rotulo,pos=0.2,above]{sim} (upd);
+\draw[seta] (dec) -| node[rotulo,pos=0.2,above]{não} (noimp);
+\draw[seta] (upd) |- ($(stop.north)+(0,2.5mm)$) -- (stop.north);
+\draw[seta] (noimp) |- ($(stop.north)+(0,2.5mm)$);
+\draw[seta] (stop) -- node[rotulo,right]{sim} (ret);
+\draw[seta] (stop.west) -- ++(-28mm,0) |- node[rotulo,pos=0.08,left]{não} (pert.west);
+\end{tikzpicture}
+\caption{Fluxo de uma execução ILS por semente, como implementado. A caminhada mantém um único ótimo local corrente $s^\ast$, perturbado e reotimizado a cada iteração; a aceitação \code{Better} e a força adaptativa controlam intensificação e diversificação.}
+\label{fig:ils-fluxo}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1mm,y=1mm]
+\draw[draw=black!55,fill=black!8]   (0,0)   rectangle (14,7);
+\draw[draw=black!55,fill=black!16]  (14,0)  rectangle (22,7);
+\draw[draw=black!55,fill=black!28]  (22,0)  rectangle (120,7);
+\node[font=\small] at (7,3.5) {pert.};
+\node[font=\small] at (18,3.5) {aval.};
+\node[font=\small] at (71,3.5) {busca local};
+\draw[decorate,decoration={brace,mirror,amplitude=2mm}] (0,-1) -- (14,-1)
+  node[rotulo,midway,below=2.5mm]{$0$ avaliações};
+\draw[decorate,decoration={brace,mirror,amplitude=2mm}] (14,-1) -- (22,-1)
+  node[rotulo,midway,below=2.5mm]{$1$ avaliação};
+\draw[decorate,decoration={brace,mirror,amplitude=2mm}] (22,-1) -- (120,-1)
+  node[rotulo,midway,below=2.5mm]{$1$ a $1\,600$ avaliações\\ (avaliações $\approx 94\%$ do tempo total)};
+\end{tikzpicture}
+\caption{Anatomia de uma iteração ILS sob a ótica do orçamento. O custo em avaliações concentra-se na busca local; a fração de tempo vem dos registros de perfil das execuções.}
+\label{fig:ils-anatomia}
+\end{figure}
+
 \subsection{Sementes, orçamento e parâmetros}
 
 As sementes são lidas de \code{seeds.txt} ($100$ inteiros); cada semente é uma execução completa e independente, com seu próprio gerador pseudoaleatório, que governa a alocação inicial, a amostragem de vizinhos na busca local e o sorteio de movimentos na perturbação. O critério de parada usa três limites: $30\,000$ avaliações da função objetivo, $500$ iterações e $80$ iterações sem melhora da melhor solução. A Tabela~\ref{tab:parametros} lista os parâmetros e as variáveis de ambiente que os controlam.
@@ -310,7 +381,7 @@ As sementes são lidas de \code{seeds.txt} ($100$ inteiros); cada semente é uma
 \toprule
 Parâmetro & Padrão & Variável de ambiente \\
 \midrule
-Máximo de avaliações & $30\,000$ & \code{ILS\_...\_MAX\_EVALUATIONS} \\
+Máximo de avaliações & $30\,000$ & --- \\
 Máximo de iterações & $500$ & --- \\
 Máximo sem melhora & $80$ & --- \\
 Força de perturbação (base) & $5$ & \code{ILS\_PERTURBATION\_STRENGTH} \\
@@ -325,6 +396,25 @@ Critério de aceitação & \code{better} & --- \\
 \end{table}
 
 O valor base da força de perturbação no código é $5$. Os resultados analisados na Seção~\ref{sec:ils-analise} foram gerados com dois valores dessa força, $2$ e $10$, justamente para estudar o efeito desse parâmetro.
+
+\subsection{Discussão dos valores dos parâmetros}
+\label{sec:ils-parametros}
+
+Os valores da Tabela~\ref{tab:parametros} não foram escolhidos de forma arbitrária. Cada um tem uma justificativa ligada à teoria da Seção~\ref{sec:ils-teoria}, ao custo computacional do problema ou ao desenho da comparação com os demais métodos do projeto. Esta subseção percorre essas justificativas.
+
+O teto de $30\,000$ avaliações define o esforço computacional em número de chamadas da função objetivo, e não em tempo. A escolha da unidade tem dois motivos. Primeiro, a avaliação é o custo dominante da execução: cada chamada recalcula os pesos CRITIC e o IQC sobre a matriz inteira, e os registros de perfil das execuções mostram que essas chamadas respondem, em média, por $94\%$ do tempo total (entre $90$ e $97\%$ conforme a instância). Segundo, um teto em avaliações não depende da máquina nem do paralelismo, e o mesmo teto é adotado pelo GRASP, o que define a comparação entre métodos sob esforço idêntico. Quanto à ordem de grandeza: uma única chamada da busca local pode consumir até $25 \times 64 = 1\,600$ avaliações no pior caso, de modo que $30\,000$ avaliações acomodam da ordem de uma centena de iterações ILS por semente; as execuções da Seção~\ref{sec:ils-analise} fizeram em média entre $106$ e $187$ iterações. Além disso, a análise de convergência (Tabela~\ref{tab:conv}) mostra que cerca de $90\%$ do ganho é obtido até por volta de $5\,000$ avaliações, então o teto não corta a busca em uma região de ganho relevante.
+
+O limite de $500$ iterações é uma salvaguarda para o caso de iterações anormalmente baratas, em que o teto de avaliações demoraria a ser atingido. Na prática ele não foi ativado: entre as $3\,000$ execuções analisadas, todas pararam por orçamento de avaliações ou por estagnação (Tabela~\ref{tab:parada}), nenhuma por número de iterações.
+
+O limite de $80$ iterações sem melhora define o que se considera estagnação, e seu valor está acoplado ao intervalo de adaptação da perturbação. Como a força aumenta uma unidade a cada $10$ iterações sem melhora, a execução tenta até oito níveis crescentes de diversificação antes de desistir. Um limite muito menor cortaria a execução antes de a adaptação ter chance de agir; um limite muito maior gastaria orçamento em uma caminhada que já não progride.
+
+Os dois parâmetros da busca local controlam o custo de cada chamada. A vizinhança completa do movimento de realocação tem tamanho da ordem do produto entre as posições não nulas da solução (até $100$) e as origens elegíveis (entre $167$ e $194$ nas instâncias do projeto), o que dá dezenas de milhares de vizinhos; uma varredura completa por melhor melhora gastaria boa parte do orçamento em um único passo. A amostragem de $64$ vizinhos com primeira melhora é a estratégia de vizinhança restrita discutida na teoria, e o limite de $25$ passos limita o custo de uma chamada a $1\,600$ avaliações, cerca de $5\%$ do orçamento, impedindo que uma única busca local consuma a execução. A primeira melhora foi preferida à melhor melhora por custar menos avaliações por movimento aceito.
+
+O tamanho de bloco $2$ da perturbação faz dela um movimento de ordem maior do que o da busca local, que realoca um único POI por vez: desfazer um bloco exige dois movimentos coordenados na mesma dimensão, o que torna improvável que a busca local desfaça a perturbação e devolva a caminhada ao mesmo ótimo local, que é a exigência central da teoria sobre perturbações. A força da perturbação é o número de blocos; com bloco $2$, uma perturbação de força $s$ move até $2s$ dos $100$ POIs da solução, ou seja, cerca de $4\%$ da solução com $s = 2$ e $20\%$ com $s = 10$. Esses dois valores foram usados nos experimentos por estarem em lados opostos do compromisso descrito na teoria — perturbação fraca demais devolve a busca ao mesmo ótimo, forte demais aproxima o método do random restart — e a análise da Seção~\ref{sec:ils-analise} mostra que a força menor foi melhor em todas as instâncias, com a maior levando à estagnação precoce. O valor base $5$ do código fica no meio desse intervalo. A adaptação, com aumento de um nível a cada $10$ iterações sem melhora e retorno ao valor base quando há melhora, implementa a recomendação de perturbações adaptativas: diversifica quando a intensificação estaciona e volta ao regime fraco assim que a busca reencontra progresso.
+
+O critério de aceitação \code{better} é o extremo de intensificação da Equação~\eqref{eq:better}. A escolha leva em conta o orçamento limitado: critérios mais diversificadores, como o passeio aleatório ou o de tipo recozimento, exploram mais o espaço dos ótimos locais, mas pagam por isso em avaliações, e a adaptação da força de perturbação já provê diversificação quando a busca estaciona. A tolerância numérica de $10^{-12}$ existe apenas para que ruído de ponto flutuante não seja tratado como melhora: como o IQC é arredondado a quatro casas decimais, qualquer melhora real da soma é da ordem de $10^{-4}$ ou maior, muitas ordens de grandeza acima da tolerância.
+
+Por fim, as $100$ sementes por instância definem o tamanho amostral da análise. Com $n = 100$, o intervalo de confiança de $95\%$ para a média tem meia-largura de aproximadamente $0{,}2$ desvio padrão amostral, estreito o suficiente para as comparações da Seção~\ref{sec:ils-analise}. O uso das mesmas sementes em todas as configurações e métodos é o que habilita as comparações pareadas, que têm mais poder estatístico do que as não pareadas.
 
 \subsection{Exemplo de execução passo a passo}
 \label{sec:exemplo}
@@ -447,7 +537,14 @@ shinjuku\_toquio & elderly & $-0{,}305$ & 100 & 0 & $3{,}9\times10^{-18}$ \\
 
 A conclusão é direta: com este conjunto de instâncias e este orçamento, a força de perturbação menor foi melhor em todos os casos. Na escala de melhoria porcentual agregada sobre as quinze instâncias, a força $2$ obteve média de $19{,}5\%$ e mediana de $8{,}9\%$, contra média de $16{,}2\%$ e mediana de $7{,}6\%$ da força $10$. A diferença entre a média e a mediana, e o desvio padrão alto (da ordem de $23$ pontos porcentuais), refletem a assimetria causada pelas instâncias de \code{itajuba\_centro}, cujas melhorias porcentuais muito grandes puxam a média para cima; por isso a mediana é uma medida mais representativa do caso típico.
 
-Esse resultado é coerente com a teoria da Seção~\ref{sec:ils-teoria}. Uma perturbação grande demais aproxima o ILS do random restart e reduz a chance de encontrar boas soluções, enquanto uma perturbação pequena mantém a caminhada produtiva. A recomendação de preferir várias perturbações pequenas a uma grande também vai nessa direção. O comportamento adaptativo reforça a leitura: partindo da força base $2$, a força final média ficou em torno de $4{,}4$ (máximo $10$), ou seja, o algoritmo só aumentou a força quando estagnou; partindo da base $10$, a força final média subiu para cerca de $17$ (máximo $18$), o que agrava o problema em vez de corrigi-lo.
+Esse resultado é coerente com a teoria da Seção~\ref{sec:ils-teoria}. Uma perturbação grande demais aproxima o ILS do random restart e reduz a chance de encontrar boas soluções, enquanto uma perturbação pequena mantém a caminhada produtiva. A recomendação de preferir várias perturbações pequenas a uma grande também vai nessa direção. O comportamento adaptativo reforça a leitura: partindo da força base $2$, a força final média ficou em torno de $4{,}4$ (máximo $10$), ou seja, o algoritmo só aumentou a força quando estagnou; partindo da base $10$, a força final média subiu para cerca de $17$ (máximo $18$), o que agrava o problema em vez de corrigi-lo. A Figura~\ref{fig:ils-box} mostra o efeito no nível das distribuições: em todas as instâncias, a caixa da força $2$ fica acima da caixa da força $10$, com sobreposição pequena ou nula.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/ils_box_strength.pdf}
+\caption{Distribuição, entre as $100$ sementes, da melhoria porcentual sobre a linha de base, por instância e força de perturbação. Caixas indicam quartis, a linha central é a mediana, e os pontos isolados são valores fora de $1{,}5$ vez o intervalo interquartílico.}
+\label{fig:ils-box}
+\end{figure}
 
 \subsection{Critério de parada e custo computacional}
 
@@ -488,9 +585,82 @@ milao eld.\ ($s{=}10$) & 50,77 (79\%) & 50,97 (92\%) & 51,04 (96\%) & 51,08 (99\
 \end{tabular}
 \end{table}
 
+A Figura~\ref{fig:ils-conv} complementa a tabela com as curvas completas de convergência, em escala logarítmica de avaliações, mostrando a média e a faixa interquartílica sobre as sementes.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/ils_convergence.pdf}
+\caption{Convergência do ILS: média, sobre as $100$ sementes, do melhor valor em função do número de avaliações (linhas) e faixas interquartílicas (áreas sombreadas), para as duas forças de perturbação. A força $2$ satura em um patamar mais alto nas duas instâncias.}
+\label{fig:ils-conv}
+\end{figure}
+
+\subsection{Influência da solução inicial}
+\label{sec:ils-inicial}
+
+A teoria da Seção~\ref{sec:ils-teoria} prevê que, em execuções longas, a memória da solução inicial se dissipa se a caminhada explora bem o espaço dos ótimos locais. Isso é testável nos dados: se a memória persiste, sementes cujo ponto de partida aleatório é melhor deveriam terminar melhor. A associação foi medida pela correlação de Spearman entre o valor da solução inicial (antes da busca local) e o melhor valor final da mesma execução, por instância, nas execuções com força $2$.
+
+As correlações são todas positivas, mas fracas: variam de $+0{,}06$ a $+0{,}50$, e apenas três das quinze instâncias permanecem significativas ao nível de $5\%$ após a correção de Holm para os quinze testes (\code{av\_paulista}/\code{elderly}, $\rho_s = 0{,}50$; \code{metro\_ana\_rosa}/\code{athlete}, $\rho_s = 0{,}41$; \code{av\_paulista}/\code{average\_adult}, $\rho_s = 0{,}40$). Mesmo nesses casos, a fração de variação explicada é modesta. A Figura~\ref{fig:ils-init} contrasta uma instância com associação detectável e outra sem: em ambas, a nuvem é larga, e partidas ruins frequentemente terminam entre as melhores. A leitura é a prevista pela teoria: com $30\,000$ avaliações de orçamento, a caminhada explora o suficiente para apagar a maior parte da influência do ponto de partida, o que também justifica a escolha de uma solução inicial aleatória simples em vez de uma construção gulosa.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/ils_init_best.pdf}
+\caption{Melhor valor da execução contra o valor da solução inicial aleatória, por semente (força $2$). À esquerda, a instância com a maior correlação da análise; à direita, uma instância típica, sem associação significativa.}
+\label{fig:ils-init}
+\end{figure}
+
+\subsection{Distribuição do IQC por hexágono: assimetria e curtose}
+\label{sec:ils-iqc-shape}
+
+As análises anteriores olham para a soma do IQC. Esta subseção olha para a forma da distribuição do IQC entre os hexágonos, antes e depois da intervenção, aplicando a melhor alocação global de cada instância (força $2$) e recalculando o IQC de todos os hexágonos. A assimetria ($g_1$) e o excesso de curtose ($g_2$) amostrais são acompanhados dos testes de D'Agostino; a Tabela~\ref{tab:ils-shape} traz os valores e as Figuras~\ref{fig:ils-iqc-dist} e~\ref{fig:ils-skewkurt} os ilustram.
+
+Antes da intervenção, doze das quinze instâncias têm assimetria positiva significativa ao nível de $5\%$ ($g_1$ entre $+0{,}45$ e $+1{,}37$): a massa concentra-se nos hexágonos de IQC baixo, com uma cauda de poucos hexágonos bons. Depois da melhor alocação do ILS, a assimetria cai em treze das quinze instâncias e permanece significativa em oito; nos casos de queda mais forte, como Itajubá, o $g_1$ passa de $+0{,}82$--$+1{,}08$ para $+0{,}05$--$+0{,}10$ nos perfis atleta e adulto. O excesso de curtose também se desloca para baixo na maioria das instâncias, com os pontos migrando para a região de distribuições mais simétricas e mais achatadas no plano $(g_1, g_2)$. Milão, cuja distribuição já era simétrica antes, muda pouco. A leitura substantiva é a mesma nos dois sentidos: a otimização não apenas eleva a soma do IQC, ela desconcentra a distribuição, elevando preferencialmente a cauda baixa — consequência de o objetivo ser a soma sob normalização min--max, em que elevar hexágonos ruins rende mais do que reforçar hexágonos já bons.
+
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}l l r r r r@{}}
+\caption{Assimetria ($g_1$) e excesso de curtose ($g_2$) da distribuição do IQC por hexágono, antes e depois da melhor alocação do ILS (força $2$). O símbolo $^{\dagger}$ marca valores significativamente diferentes de zero pelo teste de D'Agostino ao nível de $5\%$.}\label{tab:ils-shape}\\
+\toprule
+Localidade & Perfil & $g_1$ antes & $g_1$ depois & $g_2$ antes & $g_2$ depois \\
+\midrule
+\endfirsthead
+\toprule
+Localidade & Perfil & $g_1$ antes & $g_1$ depois & $g_2$ antes & $g_2$ depois \\
+\midrule
+\endhead
+av\_paulista & athlete & $+0{,}45^{\dagger}$ & $+0{,}29$ & $-0{,}37$ & $-0{,}35$ \\
+av\_paulista & average\_adult & $+0{,}52^{\dagger}$ & $+0{,}46^{\dagger}$ & $-0{,}24$ & $-0{,}01$ \\
+av\_paulista & elderly & $+0{,}58^{\dagger}$ & $+0{,}60^{\dagger}$ & $-0{,}07$ & $+0{,}17$ \\
+itajuba\_centro & athlete & $+0{,}82^{\dagger}$ & $+0{,}10$ & $-0{,}34$ & $-0{,}99^{\dagger}$ \\
+itajuba\_centro & average\_adult & $+1{,}08^{\dagger}$ & $+0{,}05$ & $+0{,}34$ & $-0{,}99^{\dagger}$ \\
+itajuba\_centro & elderly & $+1{,}37^{\dagger}$ & $+0{,}54^{\dagger}$ & $+1{,}48^{\dagger}$ & $-0{,}42$ \\
+metro\_ana\_rosa & athlete & $+0{,}76^{\dagger}$ & $+0{,}21$ & $+0{,}33$ & $-0{,}79^{\dagger}$ \\
+metro\_ana\_rosa & average\_adult & $+0{,}92^{\dagger}$ & $+0{,}47^{\dagger}$ & $+0{,}85$ & $-0{,}54$ \\
+metro\_ana\_rosa & elderly & $+1{,}01^{\dagger}$ & $+0{,}86^{\dagger}$ & $+1{,}03^{\dagger}$ & $+0{,}56$ \\
+milao\_italia & athlete & $-0{,}09$ & $-0{,}11$ & $-0{,}93^{\dagger}$ & $-0{,}95^{\dagger}$ \\
+milao\_italia & average\_adult & $+0{,}01$ & $-0{,}03$ & $-0{,}84^{\dagger}$ & $-0{,}88^{\dagger}$ \\
+milao\_italia & elderly & $+0{,}13$ & $+0{,}09$ & $-0{,}62^{\dagger}$ & $-0{,}73^{\dagger}$ \\
+shinjuku\_toquio & athlete & $+0{,}63^{\dagger}$ & $+0{,}45^{\dagger}$ & $-0{,}08$ & $-0{,}27$ \\
+shinjuku\_toquio & average\_adult & $+0{,}77^{\dagger}$ & $+0{,}60^{\dagger}$ & $+0{,}33$ & $+0{,}07$ \\
+shinjuku\_toquio & elderly & $+0{,}88^{\dagger}$ & $+0{,}71^{\dagger}$ & $+0{,}51$ & $+0{,}12$ \\
+\bottomrule
+\end{longtable}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/ils_iqc_dist.pdf}
+\caption{Distribuição do IQC por hexágono antes (cinza) e depois (azul) da melhor alocação do ILS, nas duas instâncias representativas, com $g_1$ e $g_2$ anotados.}
+\label{fig:ils-iqc-dist}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.66\textwidth]{figures/ils_skewkurt.pdf}
+\caption{Migração das quinze instâncias no plano assimetria $\times$ excesso de curtose, da distribuição de base (círculos vazios) para a distribuição após a melhor alocação do ILS (círculos cheios).}
+\label{fig:ils-skewkurt}
+\end{figure}
+
 \subsection{Síntese}
 
-Os dados sustentam três conclusões. Primeiro, o ILS melhora a linha de base de forma consistente: em todas as quinze instâncias e todas as $100$ sementes, o valor final ficou acima da base, e a dispersão entre sementes é baixa, o que indica robustez. Segundo, a magnitude da melhoria depende da instância e, em particular, do valor da linha de base, com ganhos grandes onde a base é baixa e ganhos pequenos onde a base já é alta. Terceiro, a força de perturbação tem efeito claro e estatisticamente significativo: a força menor venceu a maior em todas as instâncias, com o comportamento adaptativo e a distribuição dos motivos de parada mostrando que a força maior leva à estagnação precoce. Esse conjunto de observações está alinhado com o que a teoria do ILS prevê sobre o papel da perturbação e sobre a preferência por perturbações pequenas.
+Os dados sustentam cinco conclusões. Primeiro, o ILS melhora a linha de base de forma consistente: em todas as quinze instâncias e todas as $100$ sementes, o valor final ficou acima da base, e a dispersão entre sementes é baixa, o que indica robustez. Segundo, a magnitude da melhoria depende da instância e, em particular, do valor da linha de base, com ganhos grandes onde a base é baixa e ganhos pequenos onde a base já é alta. Terceiro, a força de perturbação tem efeito claro e estatisticamente significativo: a força menor venceu a maior em todas as instâncias, com o comportamento adaptativo e a distribuição dos motivos de parada mostrando que a força maior leva à estagnação precoce — exatamente o que a teoria prevê sobre perturbações grandes aproximarem o método do random restart. Quarto, a influência da solução inicial sobre o resultado final é fraca: a correlação entre partida e chegada só é detectável em três instâncias e é modesta mesmo nelas, confirmando que a caminhada dissipa a memória do ponto de partida no orçamento usado. Quinto, além de aumentar a soma do IQC, a intervenção torna a distribuição do IQC entre hexágonos mais simétrica e menos concentrada — a assimetria positiva significativa presente em doze instâncias antes cai em treze delas depois —, ou seja, a melhora se espalha pela região em vez de se restringir a poucos hexágonos.
 
 \begin{thebibliography}{9}
 \bibitem{lourenco2003ils}

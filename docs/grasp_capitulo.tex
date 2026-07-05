@@ -12,7 +12,17 @@
 \usepackage{algpseudocode}
 \usepackage{listings}
 \usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,decorations.pathreplacing,calc}
 \usepackage[hidelinks]{hyperref}
+
+\tikzset{
+  bloco/.style={rectangle,rounded corners=2pt,draw=black!55,fill=black!4,align=center,minimum height=6.5mm,inner sep=2.2mm,font=\small},
+  decisao/.style={diamond,aspect=2.4,draw=black!55,fill=black!4,align=center,inner sep=0.8mm,font=\small},
+  seta/.style={-{Latex[length=2.1mm]},semithick,black!65},
+  rotulo/.style={font=\scriptsize,black!55,align=left},
+}
 
 \lstset{
   basicstyle=\ttfamily\footnotesize,
@@ -30,7 +40,7 @@
 
 \newcommand{\code}[1]{\texttt{#1}}
 
-\title{GRASP para a otimização do Índice de Qualidade Caminhável (IQC):\\ método clássico e implementação no projeto}
+\title{GRASP para a otimização do Índice de Qualidade Caminhável (IQC):\\ método clássico, implementação e análise dos resultados}
 \author{}
 \date{}
 
@@ -41,7 +51,7 @@
 \section{GRASP}
 \label{sec:grasp-teoria}
 
-Esta seção descreve o GRASP na sua forma clássica, seguindo a apresentação de Resende e Ribeiro~\cite{resendeRibeiro2008}. O objetivo aqui é registrar o método como ele foi originalmente proposto, sem ainda tratar do problema específico desta tese. As decisões de adaptação ficam para a Seção~\ref{sec:grasp-projeto}.
+Esta seção descreve o GRASP na sua forma clássica, seguindo a apresentação de Resende e Ribeiro~\cite{resendeRibeiro2008}. O objetivo aqui é registrar o método como ele foi originalmente proposto, sem ainda tratar do problema específico desta tese. As decisões de adaptação ficam para a Seção~\ref{sec:grasp-projeto}, e a análise dos resultados obtidos com os dados do projeto, para a Seção~\ref{sec:grasp-analise}.
 
 \subsection{Visão geral}
 
@@ -436,6 +446,65 @@ Linha a linha do Algoritmo~\ref{alg:grasp-impl}. A linha~2 inicializa o gerador 
 
 Como o GRASP clássico não guarda estado entre iterações, não há critério de aceitação entre uma iteração e a seguinte, ao contrário do ILS: cada construção parte do zero. O que se mantém é a melhor solução global da execução.
 
+\subsection{Fluxo de execução}
+
+A Figura~\ref{fig:grasp-fluxo} resume o fluxo de uma execução por semente, e a Figura~\ref{fig:grasp-anatomia} mostra como o orçamento de avaliações se distribui dentro de uma iteração. Os dois diagramas condensam o que as listagens anteriores detalham: a construção não consome avaliações; a avaliação da solução construída consome uma; e a busca local consome uma avaliação por vizinho testado, até o limite de $25 \times 64 = 1\,600$.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=3.6mm and 6mm]
+\node[bloco] (seed) {semente $\rightarrow$ gerador pseudoaleatório};
+\node[bloco,below=of seed] (pre) {pré-compila o escore surrogate\\ (pesos CRITIC da base, alcance por origem)};
+\node[bloco,below=of pre] (alpha) {sorteia $\alpha \sim U[0,1]$};
+\node[bloco,below=of alpha] (con) {construção gulosa randomizada\\ ($100$ inserções via RCL)};
+\node[bloco,below=of con] (ev) {avalia $f(S)$};
+\node[bloco,below=of ev] (ls) {busca local por primeira melhora};
+\node[decisao,below=of ls] (dec) {$f(S) > f^\ast$?};
+\node[bloco,below left=4.5mm and -14mm of dec] (upd) {$S^\ast \gets S$;\quad sem\_melhora $\gets 0$};
+\node[bloco,below right=4.5mm and -14mm of dec] (noimp) {sem\_melhora $\gets$ sem\_melhora $+1$};
+\node[decisao,below=17mm of dec] (stop) {parar?};
+\node[bloco,below=of stop] (ret) {retorna $S^\ast$ e as métricas};
+\node[rotulo,right=2.5mm of con] {$0$ avaliações};
+\node[rotulo,right=2.5mm of ev] {$+1$ avaliação};
+\node[rotulo,right=2.5mm of ls] {$+1$ a $+1\,600$ avaliações};
+\node[rotulo,right=2.5mm of stop] {aval.\ $\ge 30\,000$ \textbf{ou} iter.\ $\ge 500$\\ \textbf{ou} sem\_melhora $\ge 80$};
+\draw[seta] (seed) -- (pre);
+\draw[seta] (pre) -- (alpha);
+\draw[seta] (alpha) -- (con);
+\draw[seta] (con) -- (ev);
+\draw[seta] (ev) -- (ls);
+\draw[seta] (ls) -- (dec);
+\draw[seta] (dec) -| node[rotulo,pos=0.2,above]{sim} (upd);
+\draw[seta] (dec) -| node[rotulo,pos=0.2,above]{não} (noimp);
+\draw[seta] (upd) |- ($(stop.north)+(0,2.5mm)$) -- (stop.north);
+\draw[seta] (noimp) |- ($(stop.north)+(0,2.5mm)$);
+\draw[seta] (stop) -- node[rotulo,right]{sim} (ret);
+\draw[seta] (stop.west) -- ++(-24mm,0) |- node[rotulo,pos=0.08,left]{não} (alpha.west);
+\end{tikzpicture}
+\caption{Fluxo de uma execução GRASP por semente, como implementado. Cada volta do laço é uma iteração independente: sorteio de $\alpha$, construção, avaliação, busca local e atualização da melhor solução.}
+\label{fig:grasp-fluxo}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1mm,y=1mm]
+\draw[draw=black!55,fill=black!8]   (0,0)   rectangle (30,7);
+\draw[draw=black!55,fill=black!16]  (30,0)  rectangle (38,7);
+\draw[draw=black!55,fill=black!28]  (38,0)  rectangle (120,7);
+\node[font=\small] at (15,3.5) {construção};
+\node[font=\small] at (34,3.5) {aval.};
+\node[font=\small] at (79,3.5) {busca local};
+\draw[decorate,decoration={brace,mirror,amplitude=2mm}] (0,-1) -- (30,-1)
+  node[rotulo,midway,below=2.5mm]{$0$ avaliações\\ ($\approx 8\%$ do tempo)};
+\draw[decorate,decoration={brace,mirror,amplitude=2mm}] (30,-1) -- (38,-1)
+  node[rotulo,midway,below=2.5mm]{$1$ avaliação};
+\draw[decorate,decoration={brace,mirror,amplitude=2mm}] (38,-1) -- (120,-1)
+  node[rotulo,midway,below=2.5mm]{$1$ a $1\,600$ avaliações\\ (avaliações $\approx 86\%$ do tempo total)};
+\end{tikzpicture}
+\caption{Anatomia de uma iteração GRASP sob a ótica do orçamento. A construção usa apenas o escore surrogate, sem chamar a função objetivo; o custo em avaliações concentra-se na busca local. As frações de tempo vêm dos registros de perfil das execuções.}
+\label{fig:grasp-anatomia}
+\end{figure}
+
 \subsection{Sementes, reprodutibilidade e paralelismo}
 
 As sementes são lidas do arquivo \code{seeds.txt}, que contém $100$ inteiros. Cada semente corresponde a uma execução completa e independente do GRASP. A semente cumpre o papel do parâmetro \emph{semente} do Algoritmo~\ref{alg:grasp}: ela inicializa o gerador pseudoaleatório, que governa tanto o sorteio dentro da RCL na construção (linha~22 da Listagem~\ref{lst:construcao}) quanto a amostragem de vizinhos na busca local (Listagem~\ref{lst:move}). Com isso, cada execução é reproduzível, e a execução da semente $i$ do GRASP fica pareada com a execução da mesma semente $i$ do ILS, o que permite comparações par a par.
@@ -531,11 +600,266 @@ Processos paralelos & automático & \code{GRASP\_SEED\_PARALLEL\_WORKERS} \\
 \end{tabular}
 \end{table}
 
+\subsection{Discussão dos valores dos parâmetros}
+\label{sec:grasp-parametros}
+
+Os valores da Tabela~\ref{tab:parametros} têm justificativas ligadas à teoria da Seção~\ref{sec:grasp-teoria}, ao custo computacional do problema e ao desenho da comparação com o ILS. Esta subseção percorre essas justificativas.
+
+Os três limites de parada, $30\,000$ avaliações, $500$ iterações e $80$ iterações sem melhora, repetem os do ILS de propósito. A unidade de esforço é a avaliação da função objetivo porque ela é o custo dominante da execução: cada chamada recalcula os pesos CRITIC e o IQC sobre a matriz inteira, e nos registros de perfil das execuções do ILS, que usam a mesma função, essas chamadas respondem por cerca de $94\%$ do tempo total. Um teto em avaliações também não depende da máquina nem do paralelismo. Com o mesmo teto nos dois métodos, a comparação fica definida sob esforço idêntico. O significado de iteração muda de um método para o outro — no GRASP, uma iteração é uma construção completa seguida de busca local — mas isso não afeta a contagem de esforço, porque a construção não consome avaliações: cada iteração custa uma avaliação da solução construída mais as avaliações da busca local. Sob esse custo, o teto de $30\,000$ permite muitas construções por semente, o que preserva o caráter multi-start do método; os limites de iterações e de estagnação funcionam como salvaguardas com a mesma semântica do ILS.
+
+Os parâmetros da busca local, $64$ vizinhos por passo e $25$ passos no máximo, são idênticos aos do ILS, e a igualdade é deliberada: como o operador é o mesmo, qualquer diferença de desempenho entre os métodos fica atribuível às partes que de fato os distinguem, que são a construção com multi-start no GRASP e a perturbação no ILS. Os valores em si têm a mesma justificativa de custo. A vizinhança completa do movimento de realocação tem tamanho da ordem do produto entre as posições não nulas da solução (até $100$) e as origens elegíveis (entre $167$ e $194$ nas instâncias do projeto), o que dá dezenas de milhares de vizinhos; uma varredura completa gastaria boa parte do orçamento em um único passo. A amostragem com primeira melhora limita o custo de uma chamada a $25 \times 64 = 1\,600$ avaliações, cerca de $5\%$ do orçamento.
+
+A estratégia de $\alpha$ sorteado uniformemente em $[0,1]$ a cada iteração segue diretamente a recomendação da teoria: um único valor fixo de $\alpha$ com frequência atrapalha a busca por soluções de alta qualidade que outro valor encontraria, e o sorteio uniforme é a alternativa simples que introduz diversidade sem exigir ajuste. O GRASP Reativo, que ajusta $\alpha$ pelo histórico de qualidade das soluções, foi considerado e deixado de fora por acrescentar parâmetros e código sem necessidade para o objetivo da comparação; extensões desse tipo são objeto do método híbrido do projeto. O valor $0{,}2$ do modo fixo foi mantido como opção de configuração porque é o valor citado na teoria como aquele que costuma combinar média de solução baixa com variância relativamente alta; ele só é usado quando o modo fixo é selecionado por variável de ambiente.
+
+Os dois pisos numéricos têm papéis distintos. O piso da faixa, $10^{-9}$, entra no denominador do fator de coluna da Equação~\eqref{eq:surrogate} e só age quando uma coluna é constante, ou seja, tem faixa nula; ele evita a divisão por zero sem alterar o escore das colunas normais, cujas faixas são ordens de grandeza maiores. A tolerância do objetivo, $10^{-12}$, evita que ruído de ponto flutuante seja tratado como melhora na busca local e na atualização da melhor solução; como o IQC é arredondado a quatro casas decimais, qualquer melhora real da soma é da ordem de $10^{-4}$ ou maior.
+
+O orçamento de $100$ POIs não é um parâmetro do algoritmo, e sim um dado do problema. A decisão de projeto foi fazer dele o número de passos da construção, de modo que toda solução construída tenha exatamente $100$ POIs e o espaço de busca coincida com o do ILS. O número de processos paralelos, por fim, é um parâmetro operacional: ele reparte as sementes entre processos, mas não altera o resultado de nenhuma semente, porque cada execução usa seu próprio gerador determinístico inicializado pela semente. As $100$ sementes de \code{seeds.txt} são as mesmas usadas pelo ILS, o que habilita comparações pareadas semente a semente entre os métodos.
+
 \subsection{Limitações e decisões de projeto}
 
 A principal aproximação da implementação está na função gulosa da construção. O escore da Equação~\eqref{eq:surrogate} não é o ganho exato, e sim uma estimativa que mantém os pesos CRITIC fixos e corrige a saturação apenas de forma aproximada, pela atualização das faixas por coluna. Essa foi uma escolha deliberada, justificada pela não separabilidade da função objetivo e pelo custo proibitivo da construção gulosa exata, e é coerente com a prática, descrita na teoria, de usar estimativas rápidas de valor de movimento para montar listas de candidatos. O valor real de toda solução é sempre calculado pela função objetivo verdadeira; a estimativa influencia apenas em quais pares recebem POIs durante a construção, não na medida de qualidade usada para aceitar ou comparar soluções. O exemplo da Seção~\ref{sec:exemplo} deixa isso explícito: a solução construída chegou a piorar o objetivo, e foi a busca local, guiada pela função verdadeira, que recuperou e ultrapassou a linha de base.
 
 Uma consequência do escore separável é que hexágonos de alcance alto tendem a ser preferidos de forma persistente, já que o fator de linha $\text{alcance}(h)$ não muda ao longo da construção. A diversidade vem de três fontes: o sorteio de $\alpha$ e da posição na RCL, a atualização das faixas por coluna, que redistribui as inserções entre dimensões, e o caráter multi-start com muitas sementes. A busca local, por fim, refina a solução dentro de cada dimensão. Outras estratégias descritas na Seção~\ref{sec:grasp-teoria}, como o GRASP Reativo e o path-relinking, ficaram fora desta versão por serem extensões que não pertencem ao template clássico; elas são objeto de um método distinto no projeto.
+
+\section{Análise dos resultados}
+\label{sec:grasp-analise}
+
+Esta seção analisa os resultados produzidos pela implementação do GRASP. Todos os números vêm dos arquivos gravados em \code{results/grasp/}, e todas as figuras foram geradas a partir desses arquivos.
+
+\subsection{Desenho experimental}
+
+Os experimentos cobrem cinco localidades (\code{av\_paulista}, \code{itajuba\_centro}, \code{metro\_ana\_rosa}, \code{milao\_italia}, \code{shinjuku\_toquio}) e três perfis de caminhada (\code{athlete}, \code{average\_adult}, \code{elderly}), totalizando quinze instâncias. Cada instância foi resolvida com as mesmas $100$ sementes de \code{seeds.txt} usadas pelo ILS, e cada semente é uma execução completa e independente, o que dá $1\,500$ execuções. Todas usaram a configuração padrão: teto de $30\,000$ avaliações, máximo de $500$ iterações, máximo de $80$ iterações sem melhora, $\alpha$ sorteado uniformemente em $[0,1]$ a cada iteração, e a busca local idêntica à do ILS ($64$ vizinhos por passo, $25$ passos).
+
+\subsection{Metodologia estatística}
+
+Para cada instância, as $100$ sementes são tratadas como uma amostra de $100$ observações independentes do valor final. Reporta-se média, desvio padrão amostral, mediana, intervalo interquartílico, coeficiente de variação e intervalo de confiança de $95\%$ para a média por $\bar{x} \pm t_{0{,}975;\,99}\, s/\sqrt{n}$. A melhoria sobre a linha de base é medida em porcentagem. A normalidade da distribuição dos valores finais entre sementes foi verificada pelo teste de Shapiro--Wilk: a hipótese de normalidade foi rejeitada ao nível de $5\%$ em sete das quinze instâncias, sempre com assimetria positiva; por isso as medianas são reportadas junto com as médias, e os testes usados nas demais análises são não paramétricos.
+
+Três análises específicas do método usam testes próprios. Para verificar se o parâmetro $\alpha$ influencia o resultado, a distribuição do $\alpha$ da melhor iteração de cada execução é comparada com a distribuição uniforme por um teste de Kolmogorov--Smirnov: se $\alpha$ fosse irrelevante, o $\alpha$ da melhor iteração seria uniforme. Para medir a associação entre $\alpha$ e a qualidade das soluções, calcula-se a correlação de postos de Spearman entre o $\alpha$ da iteração e o valor após a busca local, separadamente dentro de cada execução (as iterações de uma mesma execução não são independentes entre execuções distintas, então a execução é a unidade de análise); reporta-se a média das $100$ correlações por instância, com intervalo de confiança, e um teste de Wilcoxon da hipótese de correlação nula. Para a forma da distribuição do IQC por hexágono, a assimetria e o excesso de curtose amostrais ($g_1$ e $g_2$, com correção de viés) são acompanhados dos testes de D'Agostino para assimetria e curtose.
+
+\subsection{Resultados descritivos}
+
+A Tabela~\ref{tab:grasp-desc} apresenta as estatísticas por instância e a Figura~\ref{fig:grasp-box} mostra a distribuição da melhoria porcentual sobre a base, por semente. Em todas as quinze instâncias, todas as $100$ sementes terminaram acima da linha de base. A dispersão entre sementes é baixa: o coeficiente de variação fica entre $0{,}19\%$ e $2{,}11\%$. O padrão de dependência da instância repete o já observado no projeto: a melhoria é grande onde a linha de base é baixa (Itajubá, entre $43$ e $51\%$) e pequena onde a base já é alta (Milão, entre $3{,}3$ e $6{,}1\%$).
+
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}l l c c c c c c c@{}}
+\caption{Estatísticas descritivas do GRASP por instância ($100$ sementes). Valores em soma de IQC; $\Delta$IQC\% é a melhoria média sobre a base; CV\% é o coeficiente de variação; tempo em segundos.}\label{tab:grasp-desc}\\
+\toprule
+Localidade & Perfil & Base & Média & Desvio & Mediana & $\Delta$IQC\% & CV\% & Tempo méd. \\
+\midrule
+\endfirsthead
+\toprule
+Localidade & Perfil & Base & Média & Desvio & Mediana & $\Delta$IQC\% & CV\% & Tempo méd. \\
+\midrule
+\endhead
+av\_paulista & athlete & 54,00 & 60,21 & 0,374 & 60,17 & 11,50 & 0,62 & 26,3 \\
+av\_paulista & average\_adult & 47,06 & 53,43 & 0,461 & 53,41 & 13,55 & 0,86 & 18,3 \\
+av\_paulista & elderly & 38,68 & 44,87 & 0,419 & 44,79 & 16,01 & 0,93 & 13,8 \\
+itajuba\_centro & athlete & 30,23 & 43,27 & 0,710 & 43,26 & 43,12 & 1,64 & 19,9 \\
+itajuba\_centro & average\_adult & 25,41 & 38,40 & 0,811 & 38,43 & 51,12 & 2,11 & 18,6 \\
+itajuba\_centro & elderly & 22,75 & 32,99 & 0,691 & 32,93 & 45,00 & 2,10 & 13,7 \\
+metro\_ana\_rosa & athlete & 42,54 & 53,15 & 0,604 & 53,11 & 24,93 & 1,14 & 32,3 \\
+metro\_ana\_rosa & average\_adult & 38,53 & 47,77 & 0,573 & 47,77 & 23,97 & 1,20 & 20,5 \\
+metro\_ana\_rosa & elderly & 32,45 & 37,06 & 0,378 & 37,07 & 14,23 & 1,02 & 14,4 \\
+milao\_italia & athlete & 62,95 & 64,99 & 0,126 & 65,00 & 3,25 & 0,19 & 31,7 \\
+milao\_italia & average\_adult & 57,45 & 59,90 & 0,267 & 59,84 & 4,27 & 0,45 & 25,4 \\
+milao\_italia & elderly & 49,55 & 52,60 & 0,138 & 52,60 & 6,15 & 0,26 & 16,3 \\
+shinjuku\_toquio & athlete & 57,10 & 60,25 & 0,189 & 60,22 & 5,52 & 0,31 & 28,5 \\
+shinjuku\_toquio & average\_adult & 51,27 & 55,10 & 0,305 & 55,06 & 7,48 & 0,55 & 23,6 \\
+shinjuku\_toquio & elderly & 42,23 & 46,74 & 0,357 & 46,70 & 10,68 & 0,76 & 18,3 \\
+\bottomrule
+\end{longtable}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/grasp_box_delta.pdf}
+\caption{Distribuição, entre as $100$ sementes, da melhoria porcentual do GRASP sobre a linha de base, por instância. Caixas indicam quartis, a linha central é a mediana, e os pontos isolados são valores fora de $1{,}5$ vez o intervalo interquartílico.}
+\label{fig:grasp-box}
+\end{figure}
+
+\subsection{Comportamento do parâmetro \texorpdfstring{$\alpha$}{alfa}}
+
+Esta é a análise mais informativa sobre o método, porque o $\alpha$ é o único parâmetro genuíno do GRASP clássico. Duas perguntas orientam a análise: o $\alpha$ influencia o resultado? E, se influencia, existe um valor bom universal?
+
+Para a primeira pergunta, considere o $\alpha$ da iteração que produziu a melhor solução de cada execução. Se o $\alpha$ fosse irrelevante, esse valor seria uniforme em $[0,1]$, já que os $\alpha$ são sorteados de maneira uniforme. O teste de Kolmogorov--Smirnov rejeita a uniformidade com folga ($D = 0{,}152$, $p \approx 1{,}2 \times 10^{-30}$, $n = 1\,500$): o painel esquerdo da Figura~\ref{fig:grasp-alpha} mostra a concentração em torno do centro do intervalo e o esvaziamento dos extremos. O $\alpha$ importa.
+
+Para a segunda pergunta, o painel direito da Figura~\ref{fig:grasp-alpha} mostra a média, por instância, do $\alpha$ da melhor iteração. O intervalo é amplo: vai de $0{,}15$ em Milão (adulto e idoso) a $0{,}87$ em Itajubá (atleta). Ou seja, não existe um valor bom universal: em algumas instâncias as melhores soluções vêm de construções quase gulosas, em outras vêm de construções quase aleatórias. Esse resultado confirma nos dados a recomendação teórica da Seção~\ref{sec:grasp-teoria}, de que um único $\alpha$ fixo com frequência atrapalha, e sustenta a escolha do sorteio uniforme feita nesta implementação: o sorteio permite que cada instância encontre a sua faixa boa de $\alpha$ sem nenhum ajuste prévio.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/grasp_alpha.pdf}
+\caption{À esquerda, distribuição agregada do $\alpha$ da melhor iteração nas $1\,500$ execuções, com a referência uniforme tracejada; a uniformidade é rejeitada por Kolmogorov--Smirnov ($p \approx 10^{-30}$). À direita, média por instância com intervalo de confiança de $95\%$: o melhor $\alpha$ varia de $0{,}15$ a $0{,}87$ conforme a instância.}
+\label{fig:grasp-alpha}
+\end{figure}
+
+A Tabela~\ref{tab:grasp-alpha} quantifica a associação entre $\alpha$ e qualidade dentro das execuções, pela correlação de Spearman média entre o $\alpha$ da iteração e o valor da solução após a busca local. Todas as correlações médias são diferentes de zero (Wilcoxon, $p < 10^{-15}$ em todas as instâncias), mas o sinal muda: a correlação é positiva e forte em Itajubá (até $+0{,}95$), moderada na maior parte das instâncias, e negativa em Milão (até $-0{,}48$ no perfil idoso). A Figura~\ref{fig:grasp-alpha-scatter} mostra os dois padrões extremos: em Itajubá, quanto mais aleatória a construção, melhor a solução; em Milão, a curva sobe rápido até $\alpha$ por volta de $0{,}15$ e decai a partir daí, favorecendo construções quase gulosas.
+
+O padrão tem uma explicação ligada à estrutura do problema. O escore surrogate favorece persistentemente as origens de maior alcance; com $\alpha$ pequeno, as inserções se concentram nessas origens. Em instâncias com poucas origens de alcance alto e base baixa, como Itajubá, essa concentração eleva demais o máximo das colunas e, pela normalização min--max do IQC, rebaixa os valores normalizados dos demais hexágonos — o mesmo mecanismo visto no exemplo da Seção~\ref{sec:exemplo}. Nessas instâncias, construções mais aleatórias espalham os POIs e produzem valores reais melhores. Em instâncias grandes e de base alta, como Milão, o efeito de concentração é diluído e a informação do escore guloso volta a valer.
+
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}l l c c c c@{}}
+\caption{Análise do $\alpha$ por instância: média e mediana do $\alpha$ da melhor iteração, e correlação de Spearman média (entre iterações de uma execução, média sobre as $100$ execuções, com IC de $95\%$) entre o $\alpha$ e o valor após a busca local. Todas as correlações diferem de zero (Wilcoxon, $p<10^{-15}$).}\label{tab:grasp-alpha}\\
+\toprule
+Localidade & Perfil & $\bar{\alpha}$ melhor & Mediana & $\bar{\rho}_s(\alpha, f_{\text{LS}})$ & IC $95\%$ \\
+\midrule
+\endfirsthead
+\toprule
+Localidade & Perfil & $\bar{\alpha}$ melhor & Mediana & $\bar{\rho}_s(\alpha, f_{\text{LS}})$ & IC $95\%$ \\
+\midrule
+\endhead
+av\_paulista & athlete & 0,440 & 0,354 & $+0{,}290$ & $[+0{,}267;\ +0{,}313]$ \\
+av\_paulista & average\_adult & 0,414 & 0,399 & $+0{,}423$ & $[+0{,}403;\ +0{,}443]$ \\
+av\_paulista & elderly & 0,545 & 0,524 & $+0{,}606$ & $[+0{,}590;\ +0{,}623]$ \\
+itajuba\_centro & athlete & 0,871 & 0,880 & $+0{,}950$ & $[+0{,}946;\ +0{,}953]$ \\
+itajuba\_centro & average\_adult & 0,834 & 0,827 & $+0{,}915$ & $[+0{,}910;\ +0{,}919]$ \\
+itajuba\_centro & elderly & 0,751 & 0,753 & $+0{,}805$ & $[+0{,}797;\ +0{,}814]$ \\
+metro\_ana\_rosa & athlete & 0,645 & 0,659 & $+0{,}593$ & $[+0{,}580;\ +0{,}607]$ \\
+metro\_ana\_rosa & average\_adult & 0,569 & 0,565 & $+0{,}530$ & $[+0{,}513;\ +0{,}547]$ \\
+metro\_ana\_rosa & elderly & 0,473 & 0,461 & $+0{,}634$ & $[+0{,}620;\ +0{,}648]$ \\
+milao\_italia & athlete & 0,404 & 0,431 & $+0{,}078$ & $[+0{,}059;\ +0{,}097]$ \\
+milao\_italia & average\_adult & 0,160 & 0,121 & $-0{,}277$ & $[-0{,}297;\ -0{,}258]$ \\
+milao\_italia & elderly & 0,154 & 0,158 & $-0{,}485$ & $[-0{,}504;\ -0{,}466]$ \\
+shinjuku\_toquio & athlete & 0,501 & 0,498 & $+0{,}416$ & $[+0{,}397;\ +0{,}436]$ \\
+shinjuku\_toquio & average\_adult & 0,418 & 0,405 & $+0{,}217$ & $[+0{,}198;\ +0{,}235]$ \\
+shinjuku\_toquio & elderly & 0,484 & 0,483 & $+0{,}324$ & $[+0{,}302;\ +0{,}347]$ \\
+\bottomrule
+\end{longtable}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/grasp_alpha_scatter.pdf}
+\caption{Valor após a busca local em função do $\alpha$ da iteração (pontos: iterações de $25$ sementes; linha: média por faixa de $\alpha$), nas duas instâncias de comportamento extremo. Em Itajubá a qualidade cresce com $\alpha$; em Milão há um pico perto de $\alpha = 0{,}15$ seguido de queda.}
+\label{fig:grasp-alpha-scatter}
+\end{figure}
+
+\subsection{Construção versus busca local}
+
+A Tabela~\ref{tab:grasp-constr} separa a contribuição das duas fases. A coluna da melhor construção é o maior valor de solução construída (antes da busca local) da execução, em média sobre as sementes; a diferença até o melhor valor final mede o que a busca local acrescenta além da melhor construção pura. A busca local responde por $21$ a $38\%$ do ganho total sobre a base, com o restante vindo da construção — ou seja, a construção gulosa randomizada com escore surrogate produz sozinha a maior parte do ganho, e a busca local refina de forma consistente. A Figura~\ref{fig:grasp-constr-ls} mostra o efeito no nível da iteração: todos os pontos ficam sobre ou acima da reta identidade, porque a busca local por primeira melhora nunca piora a solução recebida.
+
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}l l c c c c@{}}
+\caption{Decomposição do ganho entre construção e busca local (médias sobre $100$ sementes, em soma de IQC). A última coluna é a fração do ganho total sobre a base devida à busca local.}\label{tab:grasp-constr}\\
+\toprule
+Localidade & Perfil & Melhor construção & Melhor final & Acréscimo da BL & BL no ganho (\%) \\
+\midrule
+\endfirsthead
+\toprule
+Localidade & Perfil & Melhor construção & Melhor final & Acréscimo da BL & BL no ganho (\%) \\
+\midrule
+\endhead
+av\_paulista & athlete & 58,18 & 60,21 & 2,03 & 32,7 \\
+av\_paulista & average\_adult & 51,53 & 53,43 & 1,90 & 29,8 \\
+av\_paulista & elderly & 43,39 & 44,87 & 1,48 & 23,9 \\
+itajuba\_centro & athlete & 39,41 & 43,27 & 3,86 & 29,6 \\
+itajuba\_centro & average\_adult & 35,01 & 38,40 & 3,39 & 26,1 \\
+itajuba\_centro & elderly & 30,52 & 32,99 & 2,47 & 24,1 \\
+metro\_ana\_rosa & athlete & 49,94 & 53,15 & 3,21 & 30,2 \\
+metro\_ana\_rosa & average\_adult & 45,03 & 47,77 & 2,74 & 29,6 \\
+metro\_ana\_rosa & elderly & 35,77 & 37,06 & 1,30 & 28,1 \\
+milao\_italia & athlete & 64,31 & 64,99 & 0,69 & 33,5 \\
+milao\_italia & average\_adult & 59,11 & 59,90 & 0,79 & 32,3 \\
+milao\_italia & elderly & 51,97 & 52,60 & 0,63 & 20,6 \\
+shinjuku\_toquio & athlete & 59,04 & 60,25 & 1,21 & 38,4 \\
+shinjuku\_toquio & average\_adult & 53,81 & 55,10 & 1,29 & 33,6 \\
+shinjuku\_toquio & elderly & 45,47 & 46,74 & 1,27 & 28,2 \\
+\bottomrule
+\end{longtable}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.62\textwidth]{figures/grasp_constr_ls.pdf}
+\caption{Valor da solução construída contra o valor após a busca local, por iteração ($30$ sementes de Ana Rosa / adulto). Nenhum ponto fica abaixo da reta identidade: a busca local por primeira melhora nunca piora a solução.}
+\label{fig:grasp-constr-ls}
+\end{figure}
+
+O tamanho médio da RCL, registrado por iteração, ficou entre $197$ e $414$ elementos conforme a instância, sobre uma grade de aproximadamente $1\,200$ a $1\,360$ candidatos. A RCL é relativamente grande porque o escore surrogate é separável (produto de um fator de linha por um fator de coluna), o que gera muitos escores próximos entre si.
+
+\subsection{Critério de parada e custo computacional}
+
+Todas as $1\,500$ execuções pararam por estagnação, ao atingir $80$ iterações sem melhora da melhor solução; nenhuma esgotou o orçamento de avaliações nem o limite de iterações. As execuções fizeram em média entre $137$ e $155$ iterações e gastaram entre $7\,800$ e $11\,700$ avaliações, ou seja, entre $26$ e $39\%$ do teto de $30\,000$. Cada iteração custou em média de $55$ a $78$ avaliações (uma da solução construída, o restante da busca local). O tempo por semente ficou entre $14$ e $32$ segundos.
+
+Esse comportamento é o esperado para o template clássico. Como o GRASP é uma amostragem repetitiva sem memória entre iterações, a probabilidade de uma nova iteração superar a melhor solução acumulada decai conforme a execução avança; a partir de certo ponto, as construções continuam produzindo soluções boas, mas raramente recordes. O critério de estagnação detecta esse regime e encerra a execução, evitando gastar o restante do orçamento em iterações com retorno esperado baixo.
+
+\subsection{Convergência}
+
+A Figura~\ref{fig:grasp-conv} e a Tabela~\ref{tab:grasp-conv} mostram a convergência nas duas instâncias representativas usadas ao longo do capítulo. O perfil é o típico de multi-start: ganho muito rápido nas primeiras iterações, quando quase toda construção melhora o recorde, seguido de saturação. Por volta de $1\,000$ avaliações já se alcança cerca de $85\%$ da melhoria total; em $5\,000$, cerca de $96$ a $97\%$; a partir de $10\,000$ o ganho residual é inferior a $1\%$.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/grasp_convergence.pdf}
+\caption{Convergência do GRASP: média, sobre as $100$ sementes, do melhor valor em função do número de avaliações (linha) e faixa interquartílica (área sombreada), em escala logarítmica de avaliações.}
+\label{fig:grasp-conv}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Convergência: média do melhor valor por número de avaliações, e fração da melhoria total (entre parênteses).}
+\label{tab:grasp-conv}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}l c c c c c@{}}
+\toprule
+Instância & 100 & 1.000 & 5.000 & 10.000 & 30.000 \\
+\midrule
+Itajubá / adulto & 30,82 (42\%) & 36,42 (85\%) & 37,94 (96\%) & 38,31 (99\%) & 38,40 (100\%) \\
+Milão / idoso & 50,91 (45\%) & 52,18 (86\%) & 52,51 (97\%) & 52,59 (100\%) & 52,60 (100\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Distribuição do IQC por hexágono: assimetria e curtose}
+\label{sec:grasp-iqc-shape}
+
+As análises anteriores olham para a soma do IQC. Esta subseção olha para a forma da distribuição do IQC entre os hexágonos, antes e depois da intervenção, aplicando a melhor alocação global de cada instância e recalculando o IQC de todos os hexágonos. A assimetria ($g_1$) e o excesso de curtose ($g_2$) amostrais são acompanhados dos testes de D'Agostino; a Tabela~\ref{tab:grasp-shape} traz os valores, e as Figuras~\ref{fig:grasp-iqc-dist} e~\ref{fig:grasp-skewkurt} os ilustram.
+
+Antes da intervenção, doze das quinze instâncias têm assimetria positiva significativa ao nível de $5\%$ (valores de $g_1$ entre $+0{,}45$ e $+1{,}37$): a massa da distribuição concentra-se nos hexágonos de IQC baixo, com uma cauda de poucos hexágonos bons. Depois da intervenção, a assimetria cai em quatorze das quinze instâncias, e permanece significativa em apenas sete; o excesso de curtose também cai na maioria delas, com os pontos migrando para perto da região $(g_1, g_2) \approx (0, \text{negativo})$ na Figura~\ref{fig:grasp-skewkurt}, que corresponde a distribuições mais simétricas e mais achatadas que a normal. Milão é a exceção que confirma o mecanismo: a distribuição já era aproximadamente simétrica antes ($g_1$ entre $-0{,}09$ e $+0{,}13$, não significativos) e muda pouco.
+
+A leitura substantiva é que a otimização não apenas aumenta a soma do IQC: ela desconcentra a distribuição. Como o objetivo é a soma e a normalização é min--max, elevar hexágonos da cauda baixa rende mais do que reforçar hexágonos já bons, e o resultado agregado é uma região com caminhabilidade mais homogênea, não apenas maior.
+
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}l l r r r r@{}}
+\caption{Assimetria ($g_1$) e excesso de curtose ($g_2$) da distribuição do IQC por hexágono, antes e depois da melhor alocação do GRASP. O símbolo $^{\dagger}$ marca valores significativamente diferentes de zero pelo teste de D'Agostino ao nível de $5\%$.}\label{tab:grasp-shape}\\
+\toprule
+Localidade & Perfil & $g_1$ antes & $g_1$ depois & $g_2$ antes & $g_2$ depois \\
+\midrule
+\endfirsthead
+\toprule
+Localidade & Perfil & $g_1$ antes & $g_1$ depois & $g_2$ antes & $g_2$ depois \\
+\midrule
+\endhead
+av\_paulista & athlete & $+0{,}45^{\dagger}$ & $+0{,}06$ & $-0{,}37$ & $-0{,}89^{\dagger}$ \\
+av\_paulista & average\_adult & $+0{,}52^{\dagger}$ & $+0{,}10$ & $-0{,}24$ & $-1{,}06^{\dagger}$ \\
+av\_paulista & elderly & $+0{,}58^{\dagger}$ & $+0{,}28$ & $-0{,}07$ & $-0{,}60^{\dagger}$ \\
+itajuba\_centro & athlete & $+0{,}82^{\dagger}$ & $+0{,}44^{\dagger}$ & $-0{,}34$ & $-0{,}66^{\dagger}$ \\
+itajuba\_centro & average\_adult & $+1{,}08^{\dagger}$ & $+0{,}50^{\dagger}$ & $+0{,}34$ & $-0{,}35$ \\
+itajuba\_centro & elderly & $+1{,}37^{\dagger}$ & $+0{,}66^{\dagger}$ & $+1{,}48^{\dagger}$ & $-0{,}07$ \\
+metro\_ana\_rosa & athlete & $+0{,}76^{\dagger}$ & $+0{,}25$ & $+0{,}33$ & $-0{,}20$ \\
+metro\_ana\_rosa & average\_adult & $+0{,}92^{\dagger}$ & $+0{,}30$ & $+0{,}85$ & $-0{,}34$ \\
+metro\_ana\_rosa & elderly & $+1{,}01^{\dagger}$ & $+0{,}79^{\dagger}$ & $+1{,}03^{\dagger}$ & $+0{,}14$ \\
+milao\_italia & athlete & $-0{,}09$ & $-0{,}15$ & $-0{,}93^{\dagger}$ & $-0{,}92^{\dagger}$ \\
+milao\_italia & average\_adult & $+0{,}01$ & $-0{,}13$ & $-0{,}84^{\dagger}$ & $-0{,}99^{\dagger}$ \\
+milao\_italia & elderly & $+0{,}13$ & $-0{,}00$ & $-0{,}62^{\dagger}$ & $-0{,}82^{\dagger}$ \\
+shinjuku\_toquio & athlete & $+0{,}63^{\dagger}$ & $+0{,}44^{\dagger}$ & $-0{,}08$ & $-0{,}21$ \\
+shinjuku\_toquio & average\_adult & $+0{,}77^{\dagger}$ & $+0{,}49^{\dagger}$ & $+0{,}33$ & $-0{,}13$ \\
+shinjuku\_toquio & elderly & $+0{,}88^{\dagger}$ & $+0{,}56^{\dagger}$ & $+0{,}51$ & $-0{,}25$ \\
+\bottomrule
+\end{longtable}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{figures/grasp_iqc_dist.pdf}
+\caption{Distribuição do IQC por hexágono antes (cinza) e depois (azul) da melhor alocação do GRASP, nas duas instâncias representativas, com $g_1$ e $g_2$ anotados. Em Itajubá a cauda baixa esvazia e a distribuição se espalha para a direita; em Milão, já simétrica, a mudança é pequena.}
+\label{fig:grasp-iqc-dist}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.66\textwidth]{figures/grasp_skewkurt.pdf}
+\caption{Migração das quinze instâncias no plano assimetria $\times$ excesso de curtose, da distribuição de base (círculos vazios) para a distribuição após a melhor alocação do GRASP (círculos cheios). O movimento predominante é para a esquerda e para baixo: distribuições mais simétricas e menos concentradas.}
+\label{fig:grasp-skewkurt}
+\end{figure}
+
+\subsection{Síntese}
+
+Os dados sustentam cinco conclusões. Primeiro, o GRASP melhora a linha de base em todas as instâncias e todas as sementes, com dispersão baixa entre sementes (coeficiente de variação máximo de $2{,}1\%$), o que indica robustez. Segundo, o parâmetro $\alpha$ importa e seu valor bom depende da instância — o $\alpha$ da melhor iteração vai de $0{,}15$ a $0{,}87$ conforme o caso, e a correlação entre $\alpha$ e qualidade muda até de sinal —, o que confirma nos dados a escolha do sorteio uniforme de $\alpha$ e a advertência da teoria contra valores fixos. Terceiro, a construção responde pela maior parte do ganho (de $62$ a $79\%$) e a busca local refina o restante, sem nunca piorar. Quarto, o método converge cedo e para por estagnação em todas as execuções, gastando cerca de um terço do orçamento de avaliações; isso é coerente com o caráter de amostragem repetitiva sem memória do template clássico. Quinto, além de aumentar a soma do IQC, a intervenção torna a distribuição do IQC entre hexágonos mais simétrica e menos concentrada — a assimetria positiva significativa presente em doze instâncias antes da intervenção cai em quatorze delas depois —, o que na prática significa uma melhora mais bem distribuída pela região, e não restrita a poucos hexágonos.
 
 \begin{thebibliography}{9}
 \bibitem{resendeRibeiro2008}
