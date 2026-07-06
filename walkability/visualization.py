@@ -525,6 +525,8 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
                              profile_key: str,
                              base_dir: str = 'data',
                              distance: int = None,
+                             title: str = None,
+                             gdf_pois: gpd.GeoDataFrame = None,
                              gdf_installed_pois: gpd.GeoDataFrame = None,
                              installed_pois_label: str = 'POIs instalados',
                              filename_suffix: str = '') -> None:
@@ -544,6 +546,9 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
         location: Location name for saving the output
         profile_key: Profile key for file naming
         base_dir: Base directory for data storage
+        title: Optional title shown above the map.
+        gdf_pois: Optional GeoDataFrame with existing POIs. If present,
+            POIs are plotted with their color column and a legend below the map.
         gdf_installed_pois: Optional GeoDataFrame with installed POIs
             (geometry + 'quantity' column). Plotted as black dots sized by
             quantity, with a legend entry.
@@ -618,10 +623,35 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
     
     # Plot edges in black
     edges_gdf.plot(ax=ax, color='black', linewidth=0.5, alpha=0.5, zorder=3)
+
+    # Plot existing POIs, when available.
+    has_pois = gdf_pois is not None and not gdf_pois.empty
+    if has_pois:
+        gdf_pois_clipped = gpd.clip(gdf_pois, map_boundary)
+        if not gdf_pois_clipped.empty:
+            if 'color' not in gdf_pois_clipped.columns:
+                gdf_pois_clipped = gdf_pois_clipped.copy()
+                gdf_pois_clipped['color'] = 'grey'
+            for color, group in gdf_pois_clipped.groupby('color'):
+                group.plot(
+                    ax=ax,
+                    color=color,
+                    marker='o',
+                    markersize=20,
+                    edgecolor='black',
+                    linewidth=0.3,
+                    alpha=0.9,
+                    zorder=5,
+                )
+            gdf_pois_for_legend = gdf_pois_clipped
+        else:
+            gdf_pois_for_legend = gdf_pois
+    else:
+        gdf_pois_for_legend = None
     
     # Plot center point
     center_coords = graph.nodes[center_node]
-    ax.scatter(center_coords['x'], center_coords['y'], c='red', s=50, zorder=5)
+    ax.scatter(center_coords['x'], center_coords['y'], c='red', s=50, zorder=6)
 
     # Plot installed POIs (black dots sized by quantity)
     has_installed_pois = gdf_installed_pois is not None and not gdf_installed_pois.empty
@@ -630,13 +660,12 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
         sizes = 14 + 10 * pd.to_numeric(quantities, errors='coerce').fillna(1).clip(lower=1)
         ax.scatter(
             gdf_installed_pois.geometry.x, gdf_installed_pois.geometry.y,
-            c='black', s=sizes, edgecolor='white', linewidth=0.5, zorder=6,
+            c='black', s=sizes, edgecolor='white', linewidth=0.5, zorder=7,
         )
-        total_pois = int(pd.to_numeric(quantities, errors='coerce').fillna(1).sum())
         ax.legend(
             handles=[Line2D([0], [0], marker='o', color='w', markerfacecolor='black',
                             markeredgecolor='white', markersize=8,
-                            label=f'{installed_pois_label} ({total_pois})')],
+                            label=installed_pois_label)],
             loc='upper right', fontsize=10, frameon=True, fancybox=True,
         )
 
@@ -654,6 +683,11 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
     
     # Remove axis
     ax.set_axis_off()
+    if title:
+        ax.set_title(title, fontsize=16, weight='bold', pad=14)
+
+    if gdf_pois_for_legend is not None:
+        _add_poi_legend_below(fig, gdf_pois_for_legend)
     
     # Save figure
     output_dir = f"{base_dir}/visualizations"
@@ -728,8 +762,32 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
                 # Plot edges
                 edges_gdf.plot(ax=ax_cls, color='black', linewidth=0.5, alpha=0.5, zorder=3)
 
+                # Plot existing POIs.
+                if has_pois:
+                    gdf_pois_clipped = gpd.clip(gdf_pois, map_boundary)
+                    if not gdf_pois_clipped.empty:
+                        if 'color' not in gdf_pois_clipped.columns:
+                            gdf_pois_clipped = gdf_pois_clipped.copy()
+                            gdf_pois_clipped['color'] = 'grey'
+                        for color, group in gdf_pois_clipped.groupby('color'):
+                            group.plot(
+                                ax=ax_cls,
+                                color=color,
+                                marker='o',
+                                markersize=20,
+                                edgecolor='black',
+                                linewidth=0.3,
+                                alpha=0.9,
+                                zorder=5,
+                            )
+                        gdf_pois_for_cls_legend = gdf_pois_clipped
+                    else:
+                        gdf_pois_for_cls_legend = gdf_pois
+                else:
+                    gdf_pois_for_cls_legend = None
+
                 # Plot center point
-                ax_cls.scatter(center_coords['x'], center_coords['y'], c='red', s=50, zorder=5)
+                ax_cls.scatter(center_coords['x'], center_coords['y'], c='red', s=50, zorder=6)
 
                 # Plot installed POIs, keeping the classification legend visible
                 if has_installed_pois:
@@ -737,20 +795,24 @@ def plot_walkability_heatmap(df_walkability: pd.DataFrame,
                     sizes = 14 + 10 * pd.to_numeric(quantities, errors='coerce').fillna(1).clip(lower=1)
                     ax_cls.scatter(
                         gdf_installed_pois.geometry.x, gdf_installed_pois.geometry.y,
-                        c='black', s=sizes, edgecolor='white', linewidth=0.5, zorder=6,
+                        c='black', s=sizes, edgecolor='white', linewidth=0.5, zorder=7,
                     )
-                    total_pois = int(pd.to_numeric(quantities, errors='coerce').fillna(1).sum())
                     class_legend = ax_cls.get_legend()
                     ax_cls.legend(
                         handles=[Line2D([0], [0], marker='o', color='w', markerfacecolor='black',
                                         markeredgecolor='white', markersize=8,
-                                        label=f'{installed_pois_label} ({total_pois})')],
+                                        label=installed_pois_label)],
                         loc='upper right', fontsize=9, frameon=True, fancybox=True,
                     )
                     if class_legend is not None:
                         ax_cls.add_artist(class_legend)
 
                 ax_cls.set_axis_off()
+                if title:
+                    ax_cls.set_title(title, fontsize=16, weight='bold', pad=14)
+
+                if gdf_pois_for_cls_legend is not None:
+                    _add_poi_legend_below(fig_cls, gdf_pois_for_cls_legend)
 
                 cls_output = f"{output_dir}/{location}_walkability_heatmap_{profile_key}{dist_suffix}{filename_suffix}_{file_suffix}.png"
                 plt.tight_layout()

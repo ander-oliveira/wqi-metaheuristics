@@ -810,6 +810,8 @@ def run_cli() -> None:
                     profile_key=profile_key,
                     base_dir=analysis_base_dir,
                     distance=DISTANCE,
+                    title=f'Baseline IQC - {location} - {profile_key}',
+                    gdf_pois=results['raw_features']['pois'],
                 )
 
         if not df_walkability_by_profile:

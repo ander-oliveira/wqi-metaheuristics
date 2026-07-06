@@ -22,13 +22,33 @@ from metaheuristics.core.evaluation import (
     objective_function,
 )
 
-from .data_sources import get_green_and_water_areas
+from .data_sources import get_green_and_water_areas, get_pois
+from .features import map_poi_colors_and_types
 from .network_ops import get_center_node
 from .utils import build_analysis_base_dir
 from .visualization import plot_walkability_heatmap
 
 
 METHOD_DIRS = ['ils', 'grasp', 'brkga', 'pso', 'hybrid_grasp_vns_pr']
+METHOD_LABELS = {
+    'ils': 'ILS',
+    'grasp': 'GRASP',
+    'brkga': 'BRKGA',
+    'pso': 'PSO',
+    'hybrid_grasp_vns_pr': 'Hybrid GRASP + VNS + PR',
+}
+POI_COLORS = {
+    'bar': '#FDBF6F', 'cafe': '#A6761D', 'fast_food': '#FF7F00',
+    'restaurant': '#D22426', 'college': '#377EB8', 'kindergarten': '#984EA3',
+    'library': '#4DAF4A', 'school': '#377EB8', 'university': '#377EB8',
+    'bicycle_parking': '#CCCCCC', 'bank': '#FFFF33', 'clinic': '#FB8072',
+    'dentist': '#BEBADA', 'doctors': '#FB8072', 'hospital': '#E31A1C',
+    'pharmacy': '#8DD3C7', 'cinema': '#BC80BD', 'theatre': '#BC80BD',
+    'hotel': '#B3DE69',
+    'gym': '#440154', 'fitness_centre': '#440154', 'fitness_center': '#440154',
+    'supermarket': '#31688E', 'convenience': '#35B779',
+    'bakery': '#FDE724', 'greengrocer': '#6DCD59', 'grocery': '#35B779'
+}
 
 
 def _get_or_build_graph(place: tuple, distance: float, network_type: str = 'walk'):
@@ -50,6 +70,12 @@ def _get_or_build_graph(place: tuple, distance: float, network_type: str = 'walk
     with open(cache_file, 'wb') as f:
         pickle.dump(graph, f)
     return graph
+
+
+def _get_colored_pois(place: tuple, distance: float, target_crs) -> gpd.GeoDataFrame:
+    """Existing POIs for map overlays, colored with the same palette as the main pipeline."""
+    gdf_pois = get_pois(place, distance, target_crs)
+    return map_poi_colors_and_types(gdf_pois, POI_COLORS)
 
 
 def _find_datasets(key_location: str, profile_keys: list,
@@ -176,6 +202,7 @@ def run_iqc_map_generation(selected_locations: list,
         graph = _get_or_build_graph(central_point, distance, network_type)
         target_crs = graph.graph['crs']
         gdf_green, gdf_water = get_green_and_water_areas(central_point, distance, target_crs)
+        gdf_pois = _get_colored_pois(central_point, distance, target_crs)
         center_node = get_center_node(graph, central_point)
 
         for dataset in datasets:
@@ -197,6 +224,8 @@ def run_iqc_map_generation(selected_locations: list,
                 profile_key=profile_key,
                 base_dir=dataset['base_dir'],
                 distance=distance,
+                title=f'Baseline IQC - {location} - {profile_key}',
+                gdf_pois=gdf_pois,
                 filename_suffix='_baseline',
             )
 
@@ -221,6 +250,7 @@ def run_iqc_map_generation(selected_locations: list,
                 df_allocation=df_allocation,
             )
             gdf_installed = _installed_pois_gdf(df_allocation, target_crs)
+            method_label = METHOD_LABELS.get(overlay_method, overlay_method.upper())
 
             plot_walkability_heatmap(
                 df_walkability=df_after,
@@ -232,8 +262,10 @@ def run_iqc_map_generation(selected_locations: list,
                 profile_key=profile_key,
                 base_dir=dataset['base_dir'],
                 distance=distance,
+                title=f'IQC after {method_label} allocation - {location} - {profile_key}',
+                gdf_pois=gdf_pois,
                 gdf_installed_pois=gdf_installed,
-                installed_pois_label='POIs instalados',
+                installed_pois_label='Allocated POIs',
                 filename_suffix=f'_after_{overlay_method}',
             )
 
