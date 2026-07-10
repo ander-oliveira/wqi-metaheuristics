@@ -1,5 +1,5 @@
 import math
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -228,7 +228,7 @@ def recalculate_iqc_and_critic(df_final: pd.DataFrame) -> Tuple[pd.DataFrame, pd
 
 
 def objective_function(*,
-                       final_indicator_matrix: np.ndarray) -> Dict[str, object]:
+                       final_indicator_matrix: np.ndarray) -> Dict[str, Any]:
     """
     Official objective function entry point.
 

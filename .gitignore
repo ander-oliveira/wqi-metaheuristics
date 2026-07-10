@@ -4,3 +4,4 @@ data/cache/
 data/dem/reprojected_*.tif
 .venv/
 venv/
+mise.toml
